@@ -1,0 +1,141 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "openproof"
+version = "0.1.0"
+description = "Anchor signed JSON manifests to Algorand with RFC 3161 timestamps. Verify anyone's anchored receipts."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Deyan Paroushev" }
+]
+maintainers = [
+    { name = "Deyan Paroushev" }
+]
+keywords = [
+    "algorand", "rfc-3161", "rfc-8785", "jcs", "scitt",
+    "attestation", "compliance", "transparency", "timestamp", "verification",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Legal Industry",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security :: Cryptography",
+    "Topic :: System :: Archiving",
+    "Topic :: Office/Business",
+    "Typing :: Typed",
+]
+
+dependencies = [
+    "rfc8785>=0.1.4,<0.2",
+    "py-algorand-sdk>=2.6.1,<3.0",
+    "tsp-client==0.2.1",
+    "cryptography>=42.0,<46.0",
+    "requests>=2.32.0,<3.0",
+    "click>=8.1,<9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "types-requests",
+]
+docs = ["mkdocs>=1.6", "mkdocs-material>=9.5"]
+gcp = [
+    "google-cloud-kms>=2.0,<4.0",
+    "google-crc32c>=1.5,<2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/deyan-paroushev/openproof-py"
+Documentation = "https://github.com/deyan-paroushev/openproof-py/tree/main/docs"
+Issues = "https://github.com/deyan-paroushev/openproof-py/issues"
+Source = "https://github.com/deyan-paroushev/openproof-py"
+Changelog = "https://github.com/deyan-paroushev/openproof-py/blob/main/CHANGELOG.md"
+Catalogue = "https://github.com/deyan-paroushev/openproof-events"
+
+[project.scripts]
+openproof = "openproof.cli:main"
+
+[tool.hatch.version]
+path = "openproof/__init__.py"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "openproof", "tests", "examples", "docs",
+    "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["openproof"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "SIM", "ANN", "S", "RUF"]
+ignore = ["ANN101", "ANN102", "S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "ANN"]
+"examples/*" = ["S101", "ANN"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["algosdk.*", "tsp_client.*", "rfc8785.*", "google.*", "google_crc32c.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = [
+    "slow: tests that hit the network (deselect with '-m \"not slow\"')",
+    "mainnet: tests that submit to Algorand mainnet (deselect by default)",
+    "integration: end-to-end integration tests",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["openproof"]
+omit = ["tests/*", "examples/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]

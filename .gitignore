@@ -1,0 +1,110 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.eggs/
+.Python
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# Linting
+.ruff_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Environments
+.env
+.env.*
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Jupyter
+.ipynb_checkpoints
+
+# Documentation builds
+docs/_build/
+docs/.cache/
+site/
+
+# Secrets and credentials (never commit)
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+.secrets/
+secrets.json
+credentials.json
+*.kms-key.json
+algorand-mnemonic.txt
+
+# Local development overrides
+local_settings.py
+local_config.py
+*.local.toml
+*.local.yaml
+
+# Project-specific
+# Working scratch directory for experiments
+scratch/
+# Local test receipts (these should be in tests/fixtures/ if intended to persist)
+*.receipt.local.json

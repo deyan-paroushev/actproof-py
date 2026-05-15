@@ -1,0 +1,89 @@
+# SPDX-FileCopyrightText: 2026 Deyan Paroushev
+# SPDX-License-Identifier: MIT
+"""
+Signer implementations for openproof anchoring.
+
+A signer holds an Algorand Ed25519 private key (or a reference to one in
+external custody) and signs transactions built by ``openproof.anchor``.
+Every concrete signer subclasses ``AlgorandSigner`` so the contract
+("transactions only, never raw bytes") is structurally enforced.
+
+What's in this package
+----------------------
+
+* ``AlgorandSigner`` (in ``interface.py``) - the abstract base class.
+  Concrete signers MUST subclass it. ``__init_subclass__`` raises
+  ``TypeError`` if a subclass adds any method whose name suggests
+  raw-byte signing (the full forbidden-name list is the module constant
+  ``FORBIDDEN_METHOD_NAMES``).
+
+* ``MnemonicSigner`` (in ``mnemonic.py``) - holds an Algorand mnemonic
+  in process memory and signs locally. **Testing only.** Emits a loud
+  ``UserWarning`` on construction. Production keys belong in an HSM.
+
+* ``GoogleKMSSigner`` (in ``google_kms.py``) - production-grade signer
+  for users who hold their Ed25519 key in Google Cloud KMS. KMS supports
+  Ed25519 natively via the ``EC_SIGN_ED25519`` algorithm; the private
+  key never leaves the KMS HSM. Requires the optional ``[gcp]`` install
+  extra (``pip install 'openproof[gcp]'``).
+
+What's NOT in this package
+--------------------------
+
+AWS KMS does not support Ed25519 directly (only RSA and SEC ECC curves
+P-256/P-384/P-521 plus secp256k1). AWS users with HSM-grade requirements
+need either AWS CloudHSM (where Ed25519 is supported) or an envelope-
+encryption pattern (Ed25519 key encrypted by AWS KMS at rest, decrypted
+into process memory at runtime - sacrifices the HSM-residency guarantee).
+Either path is out-of-scope for v0.0.8; AWS users implement their own
+``AlgorandSigner`` subclass against their preferred backend.
+
+Azure Key Vault and HashiCorp Vault similarly: write your own subclass
+against their SDKs. The ABC's enforcement does the security work
+regardless of backend.
+
+Example
+-------
+
+::
+
+    from openproof.signers import MnemonicSigner
+    from openproof import anchor_manifest, AnchorMode
+
+    signer = MnemonicSigner("...25 words separated by spaces...")
+    record = anchor_manifest(
+        manifest_hash,
+        signer=signer,
+        mode=AnchorMode.DEMO,  # testnet
+    )
+"""
+
+from __future__ import annotations
+
+from openproof.signers.interface import (
+    FORBIDDEN_METHOD_NAMES,
+    AlgorandSigner,
+    SignerValidationError,
+)
+from openproof.signers.mnemonic import MnemonicSigner
+
+# Optional: GoogleKMSSigner requires google-cloud-kms. Import is best-effort;
+# if the GCP libraries are not installed, GoogleKMSSigner stays None and
+# attempting to use it raises a clear error.
+try:
+    from openproof.signers.google_kms import GoogleKMSSigner
+    _GOOGLE_KMS_AVAILABLE: bool = True
+    _GOOGLE_KMS_ERROR: str | None = None
+except Exception as exc:  # noqa: BLE001
+    _GOOGLE_KMS_AVAILABLE = False
+    _GOOGLE_KMS_ERROR = str(exc)
+    GoogleKMSSigner = None  # type: ignore[assignment,misc]
+
+
+__all__ = [
+    "AlgorandSigner",
+    "MnemonicSigner",
+    "GoogleKMSSigner",
+    "FORBIDDEN_METHOD_NAMES",
+    "SignerValidationError",
+]
