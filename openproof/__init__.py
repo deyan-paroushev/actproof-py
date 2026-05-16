@@ -6,7 +6,7 @@ openproof: anchor signed JSON manifests; verify anyone's anchored receipts.
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -47,14 +47,21 @@ from openproof.manifest import (
     validate_manifest_shape,
 )
 
-# v0.0.4: catalogue.py
+# v0.0.4: catalogue.py (extended in v0.1.1 with v3 schema support)
 from openproof.catalogue import (
     ENV_CATALOGUE_PATH,
     SCHEMA_DISCRIMINATOR,
+    SCHEMA_DISCRIMINATOR_V2,
+    SCHEMA_DISCRIMINATOR_V3,
+    SCHEMA_DISCRIMINATORS,
     Catalogue,
     CatalogueEntry,
     CatalogueLoadError,
+    DisclosureProfile,
+    PriorReceiptsProfile,
+    RegulatedContextProfile,
     RegulatoryCitation,
+    RelianceContext,
     SignaturePolicy,
     ValidationIssue,
     hash_entry_file,
@@ -152,12 +159,16 @@ __all__ = [
     "normalize_email", "hash_email", "hash_file_bytes", "hash_json_bytes",
     "validate_manifest_shape", "ManifestValidationError",
     "RECEIPT_PROFILE_V1", "BATCHING_PROFILE_SINGLE",
-    # catalogue.py (v0.0.4)
+    # catalogue.py (v0.0.4; v3 schema support added in v0.1.1)
     "Catalogue", "CatalogueEntry", "RegulatoryCitation", "SignaturePolicy",
     "ValidationIssue", "CatalogueLoadError",
     "load_catalogue", "validate_manifest",
     "hash_entry_file", "hash_schema_file",
     "SCHEMA_DISCRIMINATOR", "ENV_CATALOGUE_PATH",
+    "RegulatedContextProfile", "PriorReceiptsProfile",
+    "RelianceContext", "DisclosureProfile",
+    "SCHEMA_DISCRIMINATOR_V2", "SCHEMA_DISCRIMINATOR_V3",
+    "SCHEMA_DISCRIMINATORS",
     # receipt.py (v0.0.5)
     "AnchorRecord", "TimestampToken", "Receipt",
     "PlaintextRecipient", "IssuerEvidence", "ReceiptError",
@@ -195,6 +206,14 @@ __all__ = [
 # v0.1.0: All planned v0.x public API has landed. v0.2.0 adds docs and
 # the GitHub Action wrapper. v0.3.0 adds the conformance test suite.
 # v1.0.0 freezes the API.
+#
+# v0.1.1: Additive support for openproof-events catalogue schema v3.
+# Four new optional CatalogueEntry sub-objects (RegulatedContextProfile,
+# PriorReceiptsProfile, RelianceContext, DisclosureProfile) and three
+# new discriminator constants (SCHEMA_DISCRIMINATOR_V2,
+# SCHEMA_DISCRIMINATOR_V3, SCHEMA_DISCRIMINATORS). The legacy
+# SCHEMA_DISCRIMINATOR name remains as a backward-compatible alias for
+# SCHEMA_DISCRIMINATOR_V2. No breaking changes.
 # ─────────────────────────────────────────────────────────────────
 
 _PLACEHOLDERS: dict[str, str] = {}

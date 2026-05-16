@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openproof"
-version = "0.1.0"
+version = "0.1.1"
 description = "Anchor signed JSON manifests to Algorand with RFC 3161 timestamps. Verify anyone's anchored receipts."
 readme = "README.md"
 requires-python = ">=3.10"

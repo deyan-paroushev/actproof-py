@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Load and query the openproof-events v2 catalogue. Validate manifests against entries.
+Load and query the openproof-events catalogue (v2 and v3 entries). Validate
+manifests against entries.
 
 A catalogue is a directory tree of JSON files; each file describes one regulated
 or governance act type (NIS2 Article 20 management body approval, EUDR DDS
@@ -10,6 +11,23 @@ maintained in a separate repository (openproof-events) under a permissive
 license. This module reads it, indexes the entries by act_type_id, computes
 content hashes for catalogue binding, and validates whether a manifest's claim
 satisfies its entry's required fields and evidence labels.
+
+Schema versions
+---------------
+
+Entries may carry one of two schema discriminators:
+
+- ``"openproof.act_catalogue_entry.v2"`` (introduced in openproof-events
+  v1.4-rc1): fifteen wire-schema fields covering claim shape, evidence,
+  signature policy, regulatory citation, and provenance.
+- ``"openproof.act_catalogue_entry.v3"`` (introduced in openproof-events
+  v1.5-rc1): strict additive superset of v2. Adds four optional sub-objects
+  for richer act-type semantics: ``regulated_context_profile``,
+  ``prior_receipts_profile``, ``reliance_context``, ``disclosure_profile``.
+
+Both are accepted by the loader. v2 entries leave the four v3 fields on
+``CatalogueEntry`` at ``None``. v3 entries populate them where the JSON
+declares the corresponding blocks; absent blocks remain ``None``.
 
 Path resolution
 ---------------
@@ -23,9 +41,11 @@ library does not constrain. Resolution order:
 3. ``./openproof-events/catalogue/acts/`` relative to the current working dir.
 4. ``./vendor/openproof-events/catalogue/acts/`` relative to the current working dir.
 
-The schema file (``act_catalogue_entry.v2.json``) is located by default at
-``../../spec/schemas/act_catalogue_entry.v2.json`` relative to the acts path
-(i.e. the conventional layout of the openproof-events repository).
+The schema file is located by default relative to the acts path at
+``../../spec/schemas/``. Resolution tries v3 first
+(``act_catalogue_entry.v3.json``), falls back to v2
+(``act_catalogue_entry.v2.json``). Whichever file is found is hashed into
+``Catalogue.schema_hash`` for receipt binding.
 
 What gets loaded
 ----------------
@@ -38,9 +58,9 @@ are filtered:
   issuance.
 - Files matching ``*.test_vectors.json`` are skipped. Those are test fixtures,
   not entries.
-- Files whose top-level ``schema`` field is not
-  ``"openproof.act_catalogue_entry.v2"`` are silently skipped (could be other
-  JSON files that happen to live in the tree).
+- Files whose top-level ``schema`` field is not one of the recognised
+  discriminators (``SCHEMA_DISCRIMINATORS``) are silently skipped (could be
+  schema files, READMEs in JSON, or other unrelated artifacts).
 - Duplicate ``act_type_id`` raises ``CatalogueLoadError``.
 
 What gets validated
@@ -54,8 +74,8 @@ What gets validated
 4. Every ``required_claim_field`` is present and non-empty in the manifest's claim.
 5. Every ``required_evidence_label`` has at least one ``Evidence`` in the manifest.
 6. Every ``Evidence.label`` is declared by the entry (in required or optional).
-7. The ``schema`` discriminator on the entry equals
-   ``"openproof.act_catalogue_entry.v2"``.
+7. The ``schema`` discriminator on the entry is one of
+   ``SCHEMA_DISCRIMINATORS``.
 
 Returns a ``list[ValidationIssue]``. An empty list means valid. The caller
 decides how to act on issues (treat all as errors, distinguish by ``code``, etc.).
@@ -83,9 +103,21 @@ API
 Data classes
 ~~~~~~~~~~~~
 
-* ``CatalogueEntry`` - one entry from the v2 catalogue (16 fields).
-* ``RegulatoryCitation`` - optional sub-object inside an entry.
-* ``SignaturePolicy`` - signature requirements sub-object inside an entry.
+* ``CatalogueEntry`` - one entry from the catalogue. v2 entries populate
+  fifteen v2 wire-schema fields plus two derived fields (``source_path``,
+  ``entry_hash``). v3 entries additionally populate up to four optional
+  sub-objects (see below); they default to ``None`` on v2 entries and on
+  v3 entries that do not declare them.
+* ``RegulatoryCitation`` - optional regulatory anchor (v2+).
+* ``SignaturePolicy`` - signature evidence requirements (v2+).
+* ``RegulatedContextProfile`` - optional v3 block constraining the receipt
+  envelope ``regulated_context`` shape for this act type.
+* ``PriorReceiptsProfile`` - optional v3 block declaring bilateral
+  lifecycle expectations (which ``prior_receipts`` roles MUST or MAY appear).
+* ``RelianceContext`` - optional v3 block naming who issues, who relies,
+  and who later verifies.
+* ``DisclosureProfile`` - optional v3 block declaring per-field disclosure
+  tier (public, commitment, private) and bilateral back-propagation scope.
 * ``Catalogue`` - the loaded collection (entries dict + provenance metadata).
 * ``ValidationIssue`` - one finding from manifest validation.
 
@@ -114,6 +146,10 @@ __all__ = [
     "CatalogueEntry",
     "RegulatoryCitation",
     "SignaturePolicy",
+    "RegulatedContextProfile",
+    "PriorReceiptsProfile",
+    "RelianceContext",
+    "DisclosureProfile",
     "ValidationIssue",
     "CatalogueLoadError",
     "load_catalogue",
@@ -121,6 +157,9 @@ __all__ = [
     "hash_entry_file",
     "hash_schema_file",
     "SCHEMA_DISCRIMINATOR",
+    "SCHEMA_DISCRIMINATOR_V2",
+    "SCHEMA_DISCRIMINATOR_V3",
+    "SCHEMA_DISCRIMINATORS",
     "ENV_CATALOGUE_PATH",
 ]
 
@@ -129,8 +168,28 @@ __all__ = [
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────
 
-SCHEMA_DISCRIMINATOR: str = "openproof.act_catalogue_entry.v2"
-"""The string the ``schema`` field of every catalogue entry must equal."""
+SCHEMA_DISCRIMINATOR_V2: str = "openproof.act_catalogue_entry.v2"
+"""Schema discriminator for v2 catalogue entries (fifteen wire-schema fields,
+no v3 sub-objects)."""
+
+SCHEMA_DISCRIMINATOR_V3: str = "openproof.act_catalogue_entry.v3"
+"""Schema discriminator for v3 catalogue entries (fifteen v2 fields plus four
+optional sub-objects: ``regulated_context_profile``, ``prior_receipts_profile``,
+``reliance_context``, ``disclosure_profile``)."""
+
+SCHEMA_DISCRIMINATORS: frozenset[str] = frozenset({
+    SCHEMA_DISCRIMINATOR_V2,
+    SCHEMA_DISCRIMINATOR_V3,
+})
+"""Set of all schema discriminator strings recognised by this loader.
+Membership check: ``entry_data["schema"] in SCHEMA_DISCRIMINATORS``."""
+
+SCHEMA_DISCRIMINATOR: str = SCHEMA_DISCRIMINATOR_V2
+"""Backward-compatible alias for ``SCHEMA_DISCRIMINATOR_V2``. Retained so that
+external consumers that imported this name from openproof v0.1.0 continue to
+work. New code should use ``SCHEMA_DISCRIMINATOR_V2`` and
+``SCHEMA_DISCRIMINATOR_V3`` directly, and ``SCHEMA_DISCRIMINATORS`` for
+membership checks."""
 
 ENV_CATALOGUE_PATH: str = "OPENPROOF_CATALOGUE_PATH"
 """Environment variable consulted for the catalogue acts path."""
@@ -141,10 +200,15 @@ _FALLBACK_ACTS_PATHS: tuple[str, ...] = (
 )
 """Filesystem locations to try if no path is given and the env var is unset."""
 
-_SCHEMA_RELATIVE_PATH: tuple[str, ...] = (
+_SCHEMA_RELATIVE_PATH_V3: tuple[str, ...] = (
+    "..", "..", "spec", "schemas", "act_catalogue_entry.v3.json",
+)
+"""Default v3 schema path relative to the acts directory."""
+
+_SCHEMA_RELATIVE_PATH_V2: tuple[str, ...] = (
     "..", "..", "spec", "schemas", "act_catalogue_entry.v2.json",
 )
-"""Default schema path relative to the acts directory."""
+"""Default v2 schema path relative to the acts directory."""
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -198,12 +262,160 @@ class SignaturePolicy:
     supports: tuple[str, ...]
 
 
+# ─────────────────────────────────────────────────────────────────
+# v3 OPTIONAL SUB-OBJECTS
+#
+# These four dataclasses correspond to the four optional blocks added in
+# the act_catalogue_entry.v3 schema. They are absent on v2 entries and
+# optional on v3 entries. Where present in JSON, they are parsed into
+# these dataclasses and exposed via the corresponding CatalogueEntry
+# fields. Where absent, the CatalogueEntry field stays ``None``.
+# ─────────────────────────────────────────────────────────────────
+
 @dataclass(frozen=True)
-class CatalogueEntry:
-    """A single v2 catalogue entry. All sixteen schema fields plus two derived.
+class RegulatedContextProfile:
+    """Constrains the receipt envelope ``regulated_context`` shape for an act type.
+
+    Introduced in act_catalogue_entry.v3. Validators MAY use this to reject
+    receipts whose ``regulated_context.context_type`` or ``submission_stage``
+    are not permitted by the issuing act type.
 
     Attributes:
-        schema: Schema discriminator. Always ``"openproof.act_catalogue_entry.v2"``.
+        allowed_context_types: Tuple of permitted ``context_type`` values.
+            A non-empty subset of ``{"transaction_or_shipment",
+            "incident_lifecycle", "reporting_period", "assurance_handoff",
+            "release_or_publication"}``.
+        allowed_submission_stages: Tuple of permitted ``submission_stage``
+            values. Each stage belongs grammatically to one of the
+            ``allowed_context_types`` per the receipt envelope spec. Empty
+            tuple means no stage restriction beyond what the envelope
+            schema enforces.
+        default_context_type: ``context_type`` assumed when an issuer does
+            not supply one. ``None`` means no default. If present, MUST be
+            a member of ``allowed_context_types``.
+    """
+    allowed_context_types: tuple[str, ...]
+    allowed_submission_stages: tuple[str, ...] = ()
+    default_context_type: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class PriorReceiptsProfile:
+    """Declares bilateral lifecycle expectations for receipts under an act type.
+
+    Introduced in act_catalogue_entry.v3. Validators MAY use this to reject
+    ``prior_receipts`` entries whose role is not declared, or to require
+    that certain roles be present.
+
+    openproof-events v1.5-rc1 entries leave this block absent (or empty)
+    because the May 19 dogfood does not exercise bilateral propagation.
+    The first exercised pair lands in v1.5-rc2 by May 30.
+
+    Attributes:
+        required_roles: Tuple of role identifiers that MUST appear in a
+            receipt's ``prior_receipts`` array. Empty tuple means no
+            prior receipts required.
+        optional_roles: Tuple of role identifiers that MAY appear in a
+            receipt's ``prior_receipts`` array.
+    """
+    required_roles: tuple[str, ...] = ()
+    optional_roles: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RelianceContext:
+    """Names who issues, who relies, and who later verifies receipts under this act type.
+
+    Introduced in act_catalogue_entry.v3. Conveys the act type's intended
+    reliance pattern in a structured form, so downstream tooling can
+    surface it without parsing prose documentation.
+
+    Attributes:
+        issuer_role: Functional description of the entity issuing receipts
+            under this act type. Example: ``"open-source maintainer
+            issuing a release attestation"``.
+        counterparty_action: What the counterparty does on receiving the
+            receipt. Example: ``"competent authority supervisor records
+            the attestation in the supervisory file"``.
+        later_verifiers: Tuple of categories of third parties expected to
+            verify the receipt independently at later points in time.
+            Example: ``("regulator", "external_auditor", "public")``.
+        reliance_statement: One-sentence statement of what the receipt
+            asserts that the counterparty and later verifiers may rely
+            upon. ``None`` if not declared.
+    """
+    issuer_role: str
+    counterparty_action: str
+    later_verifiers: tuple[str, ...]
+    reliance_statement: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class DisclosureProfile:
+    """Per-field disclosure tier and bilateral back-propagation scope.
+
+    Introduced in act_catalogue_entry.v3. Declares which manifest fields
+    are stored cleartext, which are stored as salted SHA-256 commitments,
+    and which are omitted from the manifest entirely. Also declares which
+    fields are surfaced back to each prior-receipt role in the automatic
+    disclosure receipt generated at settlement.
+
+    Three tiers:
+
+    - ``public``: cleartext in the canonical manifest.
+    - ``commitment``: salted SHA-256 hash in the manifest; cleartext lives
+      only in the issuer's holder receipt. Commitment construction is
+      ``sha256(salt || ":" || qualified_field_name || ":" || canonical_value)``.
+    - ``private``: omitted from the manifest entirely; lives only in the
+      holder receipt.
+
+    Catalogue releases MAY restrict the use of the private tier.
+    openproof-events v1.5-rc1 entries MUST have ``private_fields = ()``
+    (a constraint enforced by the catalogue validator, not by this
+    dataclass).
+
+    Field references in the three tier tuples MAY be simple claim field
+    names (e.g. ``"supplier_name"``) or dotted manifest paths
+    (e.g. ``"manifest.title"``, ``"manifest.issuer.legal_name"``,
+    ``"manifest.evidence[].label"``, ``"manifest.recipients[].org_name"``).
+    Fields not named in any of the three tier tuples default to public.
+
+    Attributes:
+        public_fields: Tuple of field references stored cleartext in the
+            canonical manifest.
+        commitment_fields: Tuple of field references stored as salted
+            SHA-256 commitments in the canonical manifest.
+        private_fields: Tuple of field references omitted from the
+            manifest entirely.
+        back_propagation_scope: Mapping from a ``prior_receipts`` role to
+            a tuple of field references visible to that prior receipt's
+            issuer in the automatic disclosure receipt generated at
+            settlement. Empty mapping means no automatic back-propagation
+            declared. Multiple roles MAY be declared even if a given
+            catalogue release exercises only one.
+    """
+    public_fields: tuple[str, ...]
+    commitment_fields: tuple[str, ...]
+    private_fields: tuple[str, ...]
+    back_propagation_scope: Mapping[str, tuple[str, ...]] = field(
+        default_factory=dict
+    )
+
+
+@dataclass(frozen=True)
+class CatalogueEntry:
+    """A single catalogue entry. Fifteen v2 wire-schema fields, two derived
+    fields, and four optional v3 sub-objects.
+
+    v2 entries populate the fifteen v2 wire-schema fields. The four v3
+    sub-object fields default to ``None`` and remain ``None`` on v2 entries.
+    v3 entries additionally populate up to four of the optional sub-objects;
+    fields not declared in JSON remain ``None``.
+
+    Attributes:
+        schema: Schema discriminator. ``"openproof.act_catalogue_entry.v2"``
+            for v2 entries, ``"openproof.act_catalogue_entry.v3"`` for v3
+            entries.
         act_type_id: Canonical identifier under ``op:`` namespace.
         claim_type: snake_case semantic shape identifier.
         display_name: Human-readable display name.
@@ -227,6 +439,18 @@ class CatalogueEntry:
         entry_hash: ``"sha256:..."`` of the raw entry JSON file bytes. Derived
             at load time. Goes into ``CatalogueBinding.entry_hash`` at manifest
             issue time.
+        regulated_context_profile: Optional v3 block constraining the receipt
+            envelope ``regulated_context`` shape for this act type. ``None``
+            for v2 entries and for v3 entries that do not declare the block.
+        prior_receipts_profile: Optional v3 block declaring bilateral
+            lifecycle expectations. ``None`` for v2 entries and for v3
+            entries that do not declare the block.
+        reliance_context: Optional v3 block naming the issuer role,
+            counterparty action, and later verifiers. ``None`` for v2
+            entries and for v3 entries that do not declare the block.
+        disclosure_profile: Optional v3 block declaring per-field disclosure
+            tier and back-propagation scope. ``None`` for v2 entries and for
+            v3 entries that do not declare the block.
     """
     schema: str
     act_type_id: str
@@ -246,6 +470,14 @@ class CatalogueEntry:
     # Derived fields:
     source_path: str = ""
     entry_hash: str = ""
+    # v3 optional sub-objects (None for v2 entries; populated from JSON on v3
+    # entries that declare them; remain None on v3 entries that do not).
+    # Placed after derived fields to preserve positional construction for any
+    # caller relying on the v2 field order (source_path, entry_hash).
+    regulated_context_profile: Optional[RegulatedContextProfile] = None
+    prior_receipts_profile: Optional[PriorReceiptsProfile] = None
+    reliance_context: Optional[RelianceContext] = None
+    disclosure_profile: Optional[DisclosureProfile] = None
 
 
 @dataclass(frozen=True)
@@ -350,9 +582,20 @@ def _resolve_acts_path(explicit: Optional[Path]) -> Path:
 
 
 def _resolve_schema_path(acts_path: Path) -> Optional[Path]:
-    """Find the schema file relative to the acts directory; None if absent."""
-    candidate = acts_path.joinpath(*_SCHEMA_RELATIVE_PATH).resolve()
-    return candidate if candidate.is_file() else None
+    """Find the schema file relative to the acts directory.
+
+    Tries v3 first (``act_catalogue_entry.v3.json``), falls back to v2
+    (``act_catalogue_entry.v2.json``). Returns ``None`` if neither file
+    exists. Catalogues that ship v3 entries should have the v3 schema file
+    present; catalogues that ship only v2 entries may have only the v2
+    schema file. Whichever file is found is what gets hashed into
+    ``Catalogue.schema_hash``.
+    """
+    for relative_parts in (_SCHEMA_RELATIVE_PATH_V3, _SCHEMA_RELATIVE_PATH_V2):
+        candidate = acts_path.joinpath(*relative_parts).resolve()
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -362,13 +605,26 @@ def _resolve_schema_path(acts_path: Path) -> Optional[Path]:
 def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntry:
     """Build a ``CatalogueEntry`` from a parsed JSON dict.
 
+    Accepts entries with either the v2 or v3 schema discriminator. v3 entries
+    additionally parse the four optional sub-objects (``regulated_context_profile``,
+    ``prior_receipts_profile``, ``reliance_context``, ``disclosure_profile``)
+    into their respective dataclasses where the corresponding JSON blocks
+    are present; absent blocks leave the field at ``None``. v2 entries
+    never populate the v3 fields, even if the JSON happens to carry them
+    (this matches the loader's general tolerance for extra dict keys; the
+    v2 JSON schema file enforces strict ``additionalProperties: false`` for
+    consumers that validate at the schema-file level).
+
     Raises:
-        CatalogueLoadError: If the schema discriminator is wrong or a
-            required field is missing/wrong-typed.
+        CatalogueLoadError: If the schema discriminator is not recognised,
+            or a required field on the entry or on a present v3 sub-object
+            is missing or wrong-typed.
     """
-    if data.get("schema") != SCHEMA_DISCRIMINATOR:
+    schema_value = data.get("schema")
+    if schema_value not in SCHEMA_DISCRIMINATORS:
         raise CatalogueLoadError(
-            f"Not a v2 entry: schema={data.get('schema')!r} at {source_path}"
+            f"Not a recognised catalogue entry: schema={schema_value!r} at "
+            f"{source_path}. Expected one of: {sorted(SCHEMA_DISCRIMINATORS)}"
         )
 
     try:
@@ -388,8 +644,60 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
             supports=tuple(sig_data.get("supports", [])),
         )
 
+        # v3 optional sub-objects. Populated only when the entry is v3 AND
+        # the corresponding block is present in JSON. v2 entries always
+        # yield None for all four (extra dict keys on v2 entries are
+        # tolerated by the Python loader but ignored here; the v2 JSON
+        # schema file enforces strict additionalProperties:false at
+        # schema-validation time for consumers that run that check).
+        regulated_context_profile: Optional[RegulatedContextProfile] = None
+        prior_receipts_profile: Optional[PriorReceiptsProfile] = None
+        reliance_context: Optional[RelianceContext] = None
+        disclosure_profile: Optional[DisclosureProfile] = None
+
+        if schema_value == SCHEMA_DISCRIMINATOR_V3:
+            rcp_data = data.get("regulated_context_profile")
+            if rcp_data is not None:
+                regulated_context_profile = RegulatedContextProfile(
+                    allowed_context_types=tuple(rcp_data["allowed_context_types"]),
+                    allowed_submission_stages=tuple(
+                        rcp_data.get("allowed_submission_stages", [])
+                    ),
+                    default_context_type=rcp_data.get("default_context_type"),
+                )
+
+            prp_data = data.get("prior_receipts_profile")
+            if prp_data is not None:
+                prior_receipts_profile = PriorReceiptsProfile(
+                    required_roles=tuple(prp_data.get("required_roles", [])),
+                    optional_roles=tuple(prp_data.get("optional_roles", [])),
+                )
+
+            rc_data = data.get("reliance_context")
+            if rc_data is not None:
+                reliance_context = RelianceContext(
+                    issuer_role=rc_data["issuer_role"],
+                    counterparty_action=rc_data["counterparty_action"],
+                    later_verifiers=tuple(rc_data["later_verifiers"]),
+                    reliance_statement=rc_data.get("reliance_statement"),
+                )
+
+            dp_data = data.get("disclosure_profile")
+            if dp_data is not None:
+                bps_raw = dp_data.get("back_propagation_scope") or {}
+                back_prop = {
+                    role: tuple(field_refs)
+                    for role, field_refs in bps_raw.items()
+                }
+                disclosure_profile = DisclosureProfile(
+                    public_fields=tuple(dp_data["public_fields"]),
+                    commitment_fields=tuple(dp_data["commitment_fields"]),
+                    private_fields=tuple(dp_data["private_fields"]),
+                    back_propagation_scope=back_prop,
+                )
+
         return CatalogueEntry(
-            schema=data["schema"],
+            schema=schema_value,
             act_type_id=data["act_type_id"],
             claim_type=data["claim_type"],
             display_name=data["display_name"],
@@ -406,6 +714,10 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
             test_vector_reference=data["test_vector_reference"],
             source_path=source_path,
             entry_hash=entry_hash,
+            regulated_context_profile=regulated_context_profile,
+            prior_receipts_profile=prior_receipts_profile,
+            reliance_context=reliance_context,
+            disclosure_profile=disclosure_profile,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise CatalogueLoadError(
@@ -414,12 +726,12 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
 
 
 def _scan_acts_directory(acts_path: Path) -> dict[str, CatalogueEntry]:
-    """Walk the acts directory and load all v2 entries.
+    """Walk the acts directory and load all v2 and v3 entries.
 
     Skipped:
         - Files in any ``_deprecated`` subdirectory.
         - Files matching ``*.test_vectors.json``.
-        - Files whose top-level ``schema`` is not the v2 discriminator
+        - Files whose top-level ``schema`` is not in ``SCHEMA_DISCRIMINATORS``
           (silently, as a permissive allowance for other JSON files in tree).
 
     Raises:
@@ -445,7 +757,7 @@ def _scan_acts_directory(acts_path: Path) -> dict[str, CatalogueEntry]:
             logger.warning("Skipping malformed JSON at %s: %s", json_path, exc)
             continue
 
-        if not isinstance(data, dict) or data.get("schema") != SCHEMA_DISCRIMINATOR:
+        if not isinstance(data, dict) or data.get("schema") not in SCHEMA_DISCRIMINATORS:
             # Could be a schema file, a README in JSON, etc. Not an error.
             continue
 
@@ -482,8 +794,9 @@ def load_catalogue(
             ``None``, resolves from ``$OPENPROOF_CATALOGUE_PATH`` or fallback
             locations.
         schema_path: Optional path to the schema JSON file. If ``None``,
-            looks for ``../../spec/schemas/act_catalogue_entry.v2.json``
-            relative to the acts path.
+            looks for ``../../spec/schemas/act_catalogue_entry.v3.json``
+            relative to the acts path first, then falls back to
+            ``act_catalogue_entry.v2.json``.
         source_uri: Optional external URI of the catalogue repository.
             Stored on the resulting ``Catalogue`` for receipt provenance.
         git_commit: Optional 40-character git SHA-1 of the catalogue at
@@ -491,7 +804,7 @@ def load_catalogue(
             provenance.
 
     Returns:
-        A ``Catalogue`` with all v2 entries indexed by ``act_type_id``.
+        A ``Catalogue`` with all v2 and v3 entries indexed by ``act_type_id``.
 
     Raises:
         CatalogueLoadError: If the path cannot be resolved or contains

@@ -17,7 +17,55 @@ release. Once 1.0.0 ships, semantic versioning will be strictly followed.
 - **v1.0.0** — API frozen.
 - **v2.0.0** — COSE_Sign1 + SCITT Transparent Statement bridge, once RFC 9943 publishes.
 
-## [0.1.0] — 2026-05-14
+## [0.1.1] — 2026-05-16
+
+### openproof-events schema v3 support
+
+Additive support for openproof-events catalogue schema v3. v3 is a strict superset of v2: existing v2 catalogues load unchanged, v3 catalogues parse the four new optional sub-objects on each entry. Backward-compatible: no breaking changes to the public API. Consumers pinned to v0.1.0 reading v2 entries continue to work without modification.
+
+The companion schema file `act_catalogue_entry.v3.json` lives in openproof-events. This release of openproof-py is what reads and validates entries against it.
+
+### Added
+
+- **`openproof/catalogue.py`** — Four new frozen dataclasses for the v3 optional sub-objects:
+  - `RegulatedContextProfile` — constrains the receipt envelope `regulated_context` shape (allowed context types, allowed submission stages, default context type).
+  - `PriorReceiptsProfile` — declares bilateral lifecycle expectations (required and optional `prior_receipts` roles).
+  - `RelianceContext` — names the issuer role, counterparty action, later verifiers, and optional reliance statement.
+  - `DisclosureProfile` — declares per-field disclosure tiers (`public_fields`, `commitment_fields`, `private_fields`) and `back_propagation_scope` mapping prior-receipt roles to field references visible in the automatic disclosure receipt generated at settlement.
+- **`openproof/catalogue.py`** — Four new constants:
+  - `SCHEMA_DISCRIMINATOR_V2` (= `"openproof.act_catalogue_entry.v2"`).
+  - `SCHEMA_DISCRIMINATOR_V3` (= `"openproof.act_catalogue_entry.v3"`).
+  - `SCHEMA_DISCRIMINATORS` (frozenset of the above two).
+  - `SCHEMA_DISCRIMINATOR` retained as a backward-compatible alias for `SCHEMA_DISCRIMINATOR_V2`.
+- **`openproof/catalogue.py`** — `CatalogueEntry` gains four optional fields (`regulated_context_profile`, `prior_receipts_profile`, `reliance_context`, `disclosure_profile`) defaulting to `None`. Fields are placed after the derived `source_path` and `entry_hash` fields so positional construction with the v2 field order continues to work.
+- **`tests/test_catalogue_v3.py`** — 42 new tests in eight groups covering: v3 dataclass construction and immutability, discriminator constants, full and partial v3 entry parsing, missing-required-field error paths, schema file resolution preference (v3 > v2), mixed v2/v3 catalogues, backward compatibility (v2-only catalogues load identically, v3 blocks on v2 entries are ignored), and a regression check against the real openproof-events v1.4-rc1 catalogue. Existing `tests/test_catalogue.py` is unchanged; its 40 tests continue to pass.
+
+### Changed
+
+- **`openproof/catalogue.py`** — `_parse_entry` accepts either v2 or v3 discriminators. v3 entries with present optional blocks populate the corresponding `CatalogueEntry` fields; absent blocks leave them at `None`. v2 entries always yield `None` for all four v3 fields, even if the JSON happens to carry v3 keys (extras are tolerated, mirroring v0.1.0 permissiveness for unknown dict keys; the JSON schema file enforces strict `additionalProperties: false` for consumers that validate at the schema-file level).
+- **`openproof/catalogue.py`** — `_scan_acts_directory` filter uses membership in `SCHEMA_DISCRIMINATORS` instead of equality with the single old discriminator. Files whose `schema` is unrecognised are silently skipped (unchanged behaviour for unrelated JSON files in the tree).
+- **`openproof/catalogue.py`** — `_resolve_schema_path` tries `act_catalogue_entry.v3.json` first, falls back to `act_catalogue_entry.v2.json`. `Catalogue.schema_hash` reflects whichever file was found. Catalogues that ship the v3 schema file (openproof-events v1.5-rc1 and later) get the v3 hash; catalogues with only the v2 file (openproof-events v1.4-rc1 and earlier) get the v2 hash unchanged.
+- **`openproof/catalogue.py`** — Error message for unrecognised discriminators in `_parse_entry` now names both accepted discriminators rather than just v2. Reachable only via direct `_parse_entry` calls; the directory walker silently skips unknown-discriminator files.
+- **`openproof/__init__.py`**: version bumped to 0.1.1. Re-exports the four new dataclasses and three new constants at the package level (`from openproof import DisclosureProfile` works).
+- **`pyproject.toml`**: version bumped to 0.1.1.
+
+### Design notes
+
+**Why v3 and not a relaxation of v2.** The four new sub-objects on each entry are not just new optional leaf fields; they introduce a structural concept (per-field disclosure tiers, multilateral bilateral propagation scope). Mutating what `"openproof.act_catalogue_entry.v2"` means while keeping the discriminator string the same would be cheap versioning: consumers that pinned to v2 would silently get a different contract. Clean v3 bump preserves the property that a discriminator string identifies a stable schema shape. v2-aware consumers continue to read v2 entries; v3-aware consumers read either.
+
+**Why the v2 schema file stays in the repository.** Receipts issued against v1.4-rc1 entries are pinned to the v2 `schema_hash`. Verifying those receipts years later requires the v2 schema file at that hash. Removing it would break the receipt-binding chain. v2 and v3 schema files coexist; each receipt verifies against whichever was current at issue time.
+
+**Why `SCHEMA_DISCRIMINATOR` is kept as an alias.** It was the only discriminator name exported by openproof v0.1.0. Renaming or removing it would break any external consumer that imported it. The alias makes the rename non-breaking. New code is encouraged to use `SCHEMA_DISCRIMINATOR_V2` and `SCHEMA_DISCRIMINATOR_V3` directly, and `SCHEMA_DISCRIMINATORS` for membership checks.
+
+**Why the four new `CatalogueEntry` fields come after the derived fields.** Dataclass field order determines positional-construction order. Inserting the four new optional fields between the fifteen v2 wire-schema fields and the two derived fields would have shifted `source_path` and `entry_hash` positions, breaking any caller using positional construction of `CatalogueEntry` with the v2 layout. Putting the new fields at the end is semantically odd (wire-schema fields after derived fields) but kindlier to backward compatibility. `_parse_entry` uses keyword arguments throughout, so this is invisible to the loader.
+
+**Type-level permissiveness is consistent across v2 and v3.** Wrong-type values inside present sub-objects (for instance, `public_fields: "not-a-list"` where a list is expected) do not raise in the Python loader. `tuple("not-a-list")` yields a tuple of characters, which is valid Python though semantically nonsense. This matches the existing v2 parser's permissiveness. Strict type validation is the JSON schema file's job, applied by external tooling such as `ajv` or `jsonschema`. The Python loader catches structural errors (missing required keys, wrong dict shape, non-iterable where iteration is needed) but not type-level errors. A separate hardening pass could tighten this uniformly across v2 and v3 in a future release if desired.
+
+### Status: 485 tests across eleven modules
+
+`tests/test_catalogue.py` (40 tests) + `tests/test_catalogue_v3.py` (42 tests) + all other test modules unchanged. Total openproof-py test count: 485 (up from 443 at v0.1.0).
+
+
 
 ### First usable release
 
