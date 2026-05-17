@@ -17,13 +17,13 @@ release. Once 1.0.0 ships, semantic versioning will be strictly followed.
 - **v1.0.0** — API frozen.
 - **v2.0.0** — COSE_Sign1 + SCITT Transparent Statement bridge, once RFC 9943 publishes.
 
-## [0.1.0] — 2026-05-17
+## [0.2.0] — 2026-05-17
 
 **First PyPI release of `actproof`.** This is the inaugural published version of the substrate library under its canonical name. The library is installable via `pip install actproof`.
 
 ### Project history
 
-The code in this release was developed under the working name `openproof` on GitHub. The repository at `github.com/deyan-paroushev/openproof-py` was renamed to `github.com/deyan-paroushev/actproof-py` on 2026-05-17; the old URL auto-redirects to the new one. GitHub tags `v0.1.0` (initial public-API surface) and `v0.1.1` (additive schema v3 support) under the previous repository name are the development history of this code; this `v0.1.0` on PyPI is the first published release under the canonical name and supersedes both working-name tags.
+The code in this release was developed under the working name `openproof` on GitHub. The repository at `github.com/deyan-paroushev/openproof-py` was renamed to `github.com/deyan-paroushev/actproof-py` on 2026-05-17; the old URL auto-redirects to the new one. GitHub tags `v0.1.0` (initial public-API surface) and `v0.1.1` (additive schema v3 support) under the previous repository name are the development history of this code; this `v0.2.0` on PyPI is the first published release under the canonical name and supersedes both working-name tags.
 
 The PyPI namespace under `openproof` is unrelated to this project.
 
