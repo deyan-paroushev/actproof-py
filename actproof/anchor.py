@@ -78,6 +78,7 @@ API
 from __future__ import annotations
 
 import base64
+import copy
 import logging
 import time
 from dataclasses import dataclass
@@ -95,6 +96,7 @@ from actproof.receipt import (
     ARC2_NOTE_FORMAT,
     AnchorRecord,
 )
+from actproof.signers.interface import ALGORAND_MIN_FEE_MICROALGOS
 
 
 logger = logging.getLogger(__name__)
@@ -341,9 +343,24 @@ def build_transaction(
     """
     _ensure_algosdk()
     note = build_note_bytes(manifest_hash, batching_profile)
+
+    # Force the anchoring transaction to use a flat minimum fee.
+    # ChatGPT v0.3.0 review Finding 2: without this, algod's
+    # suggested_params can carry flat_fee=False and a per-byte fee
+    # rate. The SDK then computes a transaction fee as
+    # fee_per_byte * tx_size, which for a ~400-byte anchoring
+    # transaction at moderate congestion easily exceeds the signer's
+    # max_fee_microalgos cap (default 1000) and would be rejected at
+    # validation time. We mutate a copy of the params so callers who
+    # supplied their own SuggestedParams object are not surprised by
+    # in-place changes.
+    sp = copy.copy(suggested_params)
+    sp.flat_fee = True
+    sp.fee = ALGORAND_MIN_FEE_MICROALGOS
+
     return PaymentTxn(
         sender=signer_address,
-        sp=suggested_params,
+        sp=sp,
         receiver=signer_address,
         amt=0,
         note=note,

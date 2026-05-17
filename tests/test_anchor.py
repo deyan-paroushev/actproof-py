@@ -399,6 +399,54 @@ class TestBuildTransaction:
         # Note should start with the ARC-2 prefix.
         assert txn.note.startswith(b"actproof:j")
 
+    def test_flat_fee_forced_even_when_caller_passed_per_byte(self) -> None:
+        """ChatGPT v0.3.0 review Finding 2: build_transaction must
+        force flat_fee=True and fee=1000 so the resulting txn is not
+        rejected by the signer's max_fee_microalgos cap when the
+        network returns per-byte fee rates."""
+        from algosdk.transaction import SuggestedParams
+
+        # Simulate algod returning per-byte fee rate during congestion.
+        sp = SuggestedParams(
+            fee=250,  # per-byte rate
+            first=1,
+            last=1001,
+            gh="JBR3KGFEWPEE5SAQ6IWU6EEBZMHXD4CZU6WCBXWGF57XBZIJHIRA",
+            gen="testnet-v1.0",
+            flat_fee=False,  # per-byte mode
+        )
+        signer_addr = "ACTPROOF" + "A" * 49
+        txn = build_transaction(
+            _VALID_HASH,
+            signer_address=signer_addr,
+            suggested_params=sp,
+        )
+        # The built transaction must carry a 1000 microALGO flat fee,
+        # regardless of what algod suggested.
+        assert txn.fee == 1000
+
+    def test_flat_fee_does_not_mutate_caller_params(self) -> None:
+        """The caller's SuggestedParams object should be untouched."""
+        from algosdk.transaction import SuggestedParams
+
+        sp = SuggestedParams(
+            fee=250,
+            first=1,
+            last=1001,
+            gh="JBR3KGFEWPEE5SAQ6IWU6EEBZMHXD4CZU6WCBXWGF57XBZIJHIRA",
+            gen="testnet-v1.0",
+            flat_fee=False,
+        )
+        signer_addr = "ACTPROOF" + "A" * 49
+        _ = build_transaction(
+            _VALID_HASH,
+            signer_address=signer_addr,
+            suggested_params=sp,
+        )
+        # The caller's sp object is unchanged.
+        assert sp.fee == 250
+        assert sp.flat_fee is False
+
 
 # ─────────────────────────────────────────────────────────────────
 # Group 9: anchor_manifest happy path (DEMO and PRODUCTION)

@@ -12,18 +12,65 @@ release. Once 1.0.0 ships, semantic versioning will be strictly followed.
 
 ### Planned
 
-- **v0.2.0** — `docs/` complete with three worked examples (NIS2 / EUDR / software release), GitHub Action wrapper `release-anchor.yml`, EU Trusted List chain validation for RFC 3161 tokens, stricter verifier semantics (PARTIAL state distinct from PASS), disclosure CLI subcommands (`actproof verify-disclosure`, `actproof issue-disclosure`).
-- **v0.3.0** — Cross-implementation conformance test suite landing.
+- **v0.4.0** — Pluggable anchor backend architecture. Generalize the chain-agnostic substrate (canonicalization, RFC 3161 timestamps, receipt format, verifier) into an `AnchorBackend` protocol with chain-specific implementations (Hedera Consensus Service, Stellar memo-hash, Bitcoin OP_RETURN, Ethereum). See `docs/ANCHOR_BACKENDS.md` for the design intent.
 - **v1.0.0** — API frozen.
 - **v2.0.0** — COSE_Sign1 + SCITT Transparent Statement bridge, once RFC 9943 publishes.
 
+## [0.3.0] — 2026-05-17
+
+**Security hardening release.** Closes a transaction-validation gap present in v0.2.0. See `SECURITY.md` for the advisory.
+
+### Security
+
+- **`AlgorandSigner.validate_transaction` now rejects attack-vector fields unconditionally.** `rekey_to`, `close_remainder_to`, `group`, and `lease` are rejected on every transaction. v0.2.0 accepted these fields if the sender, receiver, amount, and note prefix passed validation; a `rekey_to=attacker` payment was therefore accepted as a benign-looking 0-ALGO self-payment. This is the same attack class that drained roughly 3.3 million USD across 25 accounts in the February 2023 MyAlgo wallet incident.
+- **Transaction type restricted to `PaymentTxn`.** v0.2.0 accepted any `algosdk.transaction.Transaction` subclass. v0.3.0 rejects `AssetTransferTxn`, `ApplicationCallTxn`, `KeyregTxn`, and any other non-payment type.
+- **Fee bounded and forced flat.** `txn.fee` must lie in `[ALGORAND_MIN_FEE_MICROALGOS, max_fee_microalgos]` (default 1000 microALGOs). `build_transaction` now forces `flat_fee=True` and `fee=1000` on the copy of `SuggestedParams` it passes to `PaymentTxn`, so per-byte fee rates returned by algod under congestion do not produce a transaction the signer would reject.
+- **Note size bounded.** New constant `ALGORAND_MAX_NOTE_BYTES = 1024` enforced explicitly by the signer before any KMS call.
+- **`GoogleKMSSigner`: fail-closed end-to-end integrity verification.** Every KMS call now requires `response.name == request.name`, `response.verified_data_crc32c is True`, `crc32c(signature) == response.signature_crc32c`, and `len(signature) == 64`. Same pattern for `get_public_key` (`response.name`, `pem_crc32c`). v0.2.0 used `hasattr(...)` guards that silently bypassed missing fields; v0.3.0 raises `RuntimeError` if any required field is missing or invalid. Implementation follows Google's recommended pattern documented at `cloud.google.com/kms/docs/data-integrity-guidelines`.
+- **`_assemble_signed_transaction` validates signature length.** Refuses to wrap a non-64-byte signature into a `SignedTransaction` (Ed25519 signatures are always 64 octets per RFC 8032).
+- **Release workflow now runs the test suite before publishing.** `.github/workflows/release.yml` adds a pytest gate plus wheel smoke-test job that the publish job depends on. A failing test now blocks the PyPI upload.
+
+### Changed
+
+- **`AlgorandSigner.__init__` accepts `allowed_note_prefixes` and `max_fee_microalgos` only.** The earlier v0.3.0 draft had also exposed `require_self_payment` and `require_zero_amount` as configurable booleans; these were removed because disabling them turned the signer into a general-purpose Algorand signing adapter, broader than its stated scope. The strict 0-ALGO self-payment shape is now a non-configurable invariant.
+- **`allowed_note_prefixes` accepts a single `bytes` value.** Passing `allowed_note_prefixes=b"quoruna/v1:"` now works without wrapping in a list. The constructor also raises a clearer `TypeError` when a non-bytes element is found.
+- **`__init_subclass__` walks the full MRO.** Forbidden method names inherited via mixin (`class BadSigner(RawSigningMixin, AlgorandSigner)`) are now caught at class-definition time, not only methods defined directly on the subclass.
+- **`validate_transaction` fails closed on missing `super().__init__()`.** Earlier drafts silently set defaults if a subclass forgot to call the base init. v0.3.0 raises `RuntimeError` listing every missing policy attribute.
+- **GCP KMS protection level wording.** Module and class docstrings no longer claim "HSM-backed" unconditionally. The signer accepts keys with any protection level (`SOFTWARE`, `HSM`, `HSM_SINGLE_TENANT`, `EXTERNAL`); operators who need HSM-residency guarantees should create the key version accordingly.
+- **`GoogleKMSSigner` without `[gcp]` deps.** Previously `actproof.signers.GoogleKMSSigner` was set to `None` if the GCP optional dependencies were missing, producing a confusing `TypeError: 'NoneType' object is not callable` on instantiation. v0.3.0 substitutes a stub subclass that raises a clear `RuntimeError` with the install command.
+- **`tsp-client` dependency loosened to `>=0.2.1,<0.3`.** Downstream applications that pull a slightly newer compatible patch release are no longer blocked by the exact-pin requirement.
+
+### Added
+
+- `ALGORAND_MIN_FEE_MICROALGOS`, `ALGORAND_DEFAULT_MAX_FEE_MICROALGOS`, `ALGORAND_MAX_NOTE_BYTES` constants on `actproof.signers.interface`.
+- New test module `tests/test_signers_v030_policy.py` with 52 tests covering the rejection paths above plus KMS response-verification fail-closed semantics. Includes a cryptographic-equivalence regression test that confirms v0.3.0 produces byte-identical signatures to v0.2.0 for the original strict-policy use case.
+- Two new tests in `tests/test_anchor.py` for `build_transaction`: confirms the resulting transaction carries `fee=1000` regardless of caller-supplied fee rate, and confirms the caller's `SuggestedParams` object is not mutated.
+- `SECURITY.md` documenting the v0.2.0 gap, the v0.3.0 fix, and the threat model. Now included in the sdist.
+- `docs/ANCHOR_BACKENDS.md` design note for v0.4.0 multi-chain anchor abstraction.
+- `docs/INTEGRATION.md` integration guide for downstream applications consuming actproof.
+- `actproof/py.typed` PEP 561 marker so downstream type-checkers honor inline annotations.
+
+### Migration from v0.2.0
+
+Existing callers using the strict actproof policy (default constructors, anchoring with `actproof:j{...}` notes, 0-ALGO self-payments, fee 1000) see no behavioural change: the signed bytes are byte-identical. Previously-accepted transactions carrying `rekey_to`, `close_remainder_to`, `group`, `lease`, fees above 1000 microALGOs, or notes longer than 1024 bytes are now rejected with `SignerValidationError`. Audit your transaction-construction code to confirm none of these fields should have been set; for a higher `fee` ceiling during network congestion, pass `max_fee_microalgos=<n>` to the signer constructor.
+
+Callers of any earlier v0.3.0 draft that used `require_self_payment=False` or `require_zero_amount=False` need to refactor: those kwargs were removed. If you need to sign other transaction shapes, write your own `AlgorandSigner` subclass and override `validate_transaction`.
+
+### Acknowledgements
+
+Independent review by ChatGPT (May 2026, three review rounds) flagged the original `rekey_to`/`close_remainder_to` gap, the KMS integrity-check weakening, the MRO walk gap, the configurable-policy footgun, the test-gating mistake, the flat-fee deployment issue, the release-workflow missing test gate, and seven additional release-quality items. All findings are addressed in this release.
+
 ## [0.2.0] — 2026-05-17
+
+Version bump for the initial PyPI publication path. See [0.1.0] notes below for the substrate API description; v0.2.0 was the version that actually shipped to PyPI (the 0.1.0 slot was skipped per immutable-release policy).
+
+## [0.1.0] — 2026-05-17
 
 **First PyPI release of `actproof`.** This is the inaugural published version of the substrate library under its canonical name. The library is installable via `pip install actproof`.
 
 ### Project history
 
-The code in this release was developed under the working name `openproof` on GitHub. The repository at `github.com/deyan-paroushev/openproof-py` was renamed to `github.com/deyan-paroushev/actproof-py` on 2026-05-17; the old URL auto-redirects to the new one. GitHub tags `v0.1.0` (initial public-API surface) and `v0.1.1` (additive schema v3 support) under the previous repository name are the development history of this code; this `v0.2.0` on PyPI is the first published release under the canonical name and supersedes both working-name tags.
+The code in this release was developed under the working name `openproof` on GitHub. The repository at `github.com/deyan-paroushev/openproof-py` was renamed to `github.com/deyan-paroushev/actproof-py` on 2026-05-17; the old URL auto-redirects to the new one. GitHub tags `v0.1.0` (initial public-API surface) and `v0.1.1` (additive schema v3 support) under the previous repository name are the development history of this code; this `v0.1.0` on PyPI is the first published release under the canonical name and supersedes both working-name tags.
 
 The PyPI namespace under `openproof` is unrelated to this project.
 

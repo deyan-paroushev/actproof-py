@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "actproof"
-version = "0.2.0"
+version = "0.3.0"
 description = "Verifiable receipts of regulated acts. Canonical JSON (RFC 8785), RFC 3161 trusted timestamps, Algorand ARC-2 anchoring, independent verification."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -40,7 +40,7 @@ classifiers = [
 dependencies = [
     "rfc8785>=0.1.4,<0.2",
     "py-algorand-sdk>=2.6.1,<3.0",
-    "tsp-client==0.2.1",
+    "tsp-client>=0.2.1,<0.3",
     "cryptography>=42.0,<46.0",
     "requests>=2.32.0,<3.0",
     "click>=8.1,<9.0",
@@ -79,11 +79,19 @@ path = "actproof/__init__.py"
 [tool.hatch.build.targets.sdist]
 include = [
     "actproof", "tests", "examples", "docs",
-    "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml",
+    "README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md",
+    "DEPLOY.md", "pyproject.toml",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["actproof"]
+# Include py.typed marker so PEP 561 type-checkers honor our inline
+# annotations. Hatchling includes everything in the package directory
+# by default, but being explicit keeps the file from being silently
+# dropped by future build-config changes.
+include = [
+    "actproof/py.typed",
+]
 
 [tool.ruff]
 line-length = 100

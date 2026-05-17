@@ -8,8 +8,42 @@ on:
     types: [published]
 
 jobs:
+  test:
+    name: Run test suite before publishing
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install with dev and gcp extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,gcp]"
+
+      - name: Run pytest
+        run: |
+          pytest -q --tb=short
+
+      - name: Smoke-test the built wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+          python -m pip install "dist/$(ls dist/ | grep .whl)[gcp]"
+          python -c "import actproof; print(f'actproof {actproof.__version__} imports OK')"
+          python -c "from actproof.signers import GoogleKMSSigner; assert GoogleKMSSigner is not None, 'GoogleKMSSigner is None'"
+          python -c "from actproof.signers import AlgorandSigner, MnemonicSigner; print('signers import OK')"
+
   release:
     name: Build and publish to PyPI
+    needs: test
     runs-on: ubuntu-latest
 
     # The `pypi` environment must be configured in the repository settings

@@ -1,80 +1,90 @@
-# Security Policy
+# Security advisory: actproof v0.2.0
 
-## Supported versions
+## Summary
 
-| Version | Supported |
-|---|---|
-| 0.1.x | Yes |
+actproof v0.2.0 (released to PyPI on 17 May 2026) contains a
+transaction-validation gap in `actproof.signers.AlgorandSigner.validate_transaction`.
+The signer accepts Algorand transactions that carry `rekey_to`,
+`close_remainder_to`, arbitrary `fee`, `group`, or `lease` fields, as
+long as the sender, receiver, amount, and note prefix pass validation.
 
-The project follows semantic versioning. Pre-1.0.0 minor versions may receive
-security fixes; older minor versions on the 0.x line will not be backported
-to once a newer minor lands.
+An attacker who can construct an `algosdk.transaction.Transaction` and
+pass it to `sign_transaction` can therefore have the signer authorise a
+transaction that looks like a benign 0-ALGO self-payment but actually
+transfers signing authority of the account to an address the attacker
+controls (`rekey_to`), drains the account's remaining balance
+(`close_remainder_to`), or burns ALGO via an inflated `fee`.
 
-## Reporting a vulnerability
+The Algorand `rekey_to` field is the same attack class that drained
+roughly 3.3 million USD across approximately 25 accounts in the
+February 2023 MyAlgo wallet incident.
 
-Please report security vulnerabilities by email to **security@advisa.tech**.
+## Severity
 
-- Expected acknowledgment within 5 business days.
-- Coordinated disclosure: default 90-day window from acknowledgment to public
-  disclosure; the window can be accelerated or extended by mutual agreement.
-- Please do not open public GitHub issues for security reports. Use the email
-  channel above so a fix can be prepared before the issue becomes public.
+High. Exploitation requires the attacker to have the ability to
+construct and submit a transaction to the signer (i.e. application-
+layer compromise above the signer). The KMS key itself remains
+protected by the HSM. However, the signer is the trust boundary the
+package advertises, so the gap weakens the security guarantee the
+package was meant to provide.
 
-If you prefer encrypted email, please request a PGP key via the same address.
+## Affected versions
 
-## Scope
+- `actproof` 0.2.0 (the only public release as of this advisory)
 
-In scope for the security policy:
+## Fixed in
 
-- Correctness of canonical JSON serialization (RFC 8785) for receipt envelopes
-  and manifests
-- Correctness of manifest hashing and the resulting `manifest_hash`
-- Correctness of RFC 3161 trusted-timestamp token acquisition, parsing, and
-  verification
-- Correctness of Algorand ARC-2 note payload construction and round-tripping
-- Correctness of the receipt envelope structure, including the catalogue
-  binding (commit hash and entry hash pinning)
-- Correctness of the verifier's per-check results (PASS, FAIL, SKIP) and the
-  exit-code mapping in the CLI
-- Authentication and authorization of operations that take signing material
-  (mnemonic env var, GCP KMS resource path)
-- Behaviour of the public Python API surface (`actproof.*` exports listed in
-  `__init__.py`)
+- `actproof` 0.3.0
 
-## Out of scope
+## Mitigation if upgrading is not immediate
 
-The substrate intentionally takes no position on:
+Audit all call sites that pass a `Transaction` object to
+`AlgorandSigner.sign_transaction`. Verify that every `Transaction`
+passed is constructed by code you control and that no path constructs
+a `Transaction` with `rekey_to`, `close_remainder_to`, `group`, or
+`lease` set.
 
-- **Legal sufficiency** of any document referenced by a receipt. The substrate
-  produces verifiable evidence trails; legal sufficiency is determined by the
-  relevant authority, not by `actproof`.
-- **Regulatory acceptance** of any compliance evidence. National authorities
-  and EU competent authorities determine acceptance of compliance evidence
-  under the regulation each receipt cites; `actproof` does not.
-- **Truthfulness of source documents.** The substrate verifies integrity,
-  timing, issuer signature, catalogue classification, and ledger anchor. It
-  does not verify whether the underlying document's claims are factually
-  correct.
-- **Algorand finality guarantees.** Once a transaction is confirmed and
-  indexable, `actproof` treats the note as anchored. Underlying blockchain
-  finality is the responsibility of the network.
-- **Issuer key management.** If the issuer's signing key is compromised, the
-  attacker can issue receipts that pass verification. Key rotation, HSM
-  policies, and access controls are the issuer's responsibility.
-- **GCP Cloud KMS service security.** When using the `GoogleKMSSigner`, the
-  security of the KMS service itself is Google Cloud's responsibility.
-- **Trusted Timestamping Authority (TSA) legal qualification.** The substrate
-  verifies the technical validity of an RFC 3161 token returned by a TSA. It
-  does not assert that the TSA holds eIDAS qualified status; consumers needing
-  qualified-trust-service guarantees must validate the TSA's status through
-  the EU Trusted List separately.
-- **Catalogue semantics.** The substrate verifies that a receipt's
-  `catalogue_binding` matches the catalogue commit hash and entry hash it
-  claims. It does not assert that the catalogue entry's specification
-  accurately reflects the legal or regulatory requirement it cites.
+## Fix in v0.3.0
 
-## Reporter recognition
+`validate_transaction` now rejects:
 
-Security reporters who follow coordinated disclosure are credited in
-`CHANGELOG.md` for the release that contains the fix, unless they request
-otherwise.
+1. Any transaction that is not a `PaymentTxn` (rejects
+   `AssetTransferTxn`, `ApplicationCallTxn`, `KeyregTxn`, and other
+   transaction classes).
+2. Any transaction with `rekey_to` set.
+3. Any transaction with `close_remainder_to` set.
+4. Any transaction with `group` set.
+5. Any transaction with `lease` set.
+6. Any transaction with `fee` outside
+   `[ALGORAND_MIN_FEE_MICROALGOS, max_fee_microalgos]` (default range:
+   exactly 1000 microALGO).
+
+The two booleans `require_self_payment` and `require_zero_amount`
+that earlier drafts of v0.3.0 added as configurable kwargs were
+removed. The strict actproof anchoring shape (0-ALGO self-payment,
+tagged note, no rekey/close/group/lease) is now non-configurable.
+
+The only remaining configurable policy parameters are
+`allowed_note_prefixes` (the legitimate point of variation between
+actproof, Quoruna, and other downstream anchoring schemes) and
+`max_fee_microalgos` (so callers can anchor during network congestion
+with an explicit, auditable decision).
+
+## GCP KMS hardening
+
+In addition to the transaction-policy fix, v0.3.0 implements Google's
+recommended end-to-end integrity verification pattern for KMS
+responses, fail-closed on every check. See
+`actproof/signers/google_kms.py` and the v0.3.0 changelog entry.
+
+## Acknowledgements
+
+Independent review by ChatGPT (May 2026) flagged the
+`rekey_to`/`close_remainder_to` gap and the KMS integrity-check
+weakening. Both findings are addressed in v0.3.0.
+
+## Contact
+
+For security questions, open a GitHub issue at
+https://github.com/deyan-paroushev/actproof-py or email the address
+in `pyproject.toml`.

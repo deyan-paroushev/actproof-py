@@ -35,6 +35,9 @@ class _MinimalSigner(AlgorandSigner):
     a sentinel.
     """
     def __init__(self, address: str = "X" * 58) -> None:
+        # v0.3.0 requires super().__init__() to set up the policy
+        # attributes (_allowed_note_prefixes, _max_fee_microalgos).
+        super().__init__()
         self._address = address
 
     @property
@@ -213,7 +216,7 @@ class TestValidateTransactionRejects:
 
     def test_not_a_transaction_rejected(self) -> None:
         signer = _MinimalSigner()
-        with pytest.raises(SignerValidationError, match="Transaction"):
+        with pytest.raises(SignerValidationError, match="PaymentTxn"):
             signer.validate_transaction("not a transaction")
 
     def test_wrong_sender_rejected(self) -> None:

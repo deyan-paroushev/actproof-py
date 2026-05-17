@@ -92,21 +92,31 @@ def _make_mock_kms_client(
     pem_crc: int | None = None,
     sig_crc: int | None = None,
     verified_data_crc: bool = True,
+    resource_name: str | None = None,
 ) -> MagicMock:
     """Build a mock KMS client whose get_public_key and asymmetric_sign
-    return the supplied bytes."""
+    return the supplied bytes.
+
+    v0.3.0 enforces ``response.name == request.name`` fail-closed, so
+    every response mock must set the ``name`` attribute to the
+    resource path the signer was constructed with.
+    """
     import google_crc32c
 
     if pem_crc is None:
         pem_crc = int(google_crc32c.value(pem_bytes))
     if sig_crc is None:
         sig_crc = int(google_crc32c.value(signature_bytes))
+    if resource_name is None:
+        resource_name = _VALID_KMS_PATH
 
     pubkey_response = MagicMock()
+    pubkey_response.name = resource_name
     pubkey_response.pem = pem_bytes.decode("utf-8")
     pubkey_response.pem_crc32c = pem_crc
 
     sign_response = MagicMock()
+    sign_response.name = resource_name
     sign_response.signature = signature_bytes
     sign_response.signature_crc32c = sig_crc
     sign_response.verified_data_crc32c = verified_data_crc
