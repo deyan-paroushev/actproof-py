@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Abstract base class for Algorand signers in openproof.
+Abstract base class for Algorand signers in actproof.
 
 The structural invariant: every signer subclass signs ONLY Algorand
 transactions, never arbitrary bytes. This module enforces that invariant
@@ -17,7 +17,7 @@ If the Ed25519 anchoring key is held in HSM-backed KMS, the operator
 (the platform, the SRE on call) cannot extract the key material. KMS
 itself, however, will happily sign any byte sequence if asked. The
 defense-in-depth move is that the signer adapter, the only piece of
-openproof code that holds a reference to the KMS client, MUST NEVER
+actproof code that holds a reference to the KMS client, MUST NEVER
 expose a code path that calls the underlying sign with anything other
 than a properly-built Algorand transaction.
 
@@ -50,8 +50,8 @@ subclasses MUST call before signing. The default validation checks:
 2. ``txn.sender`` equals ``self.address``.
 3. ``txn.receiver`` equals ``txn.sender`` (0-Algo self-payment pattern).
 4. ``txn.amt`` equals zero.
-5. ``txn.note`` is bytes and starts with the openproof ARC-2 prefix
-   (``b"openproof:j"``).
+5. ``txn.note`` is bytes and starts with the actproof ARC-2 prefix
+   (``b"actproof:j"``).
 
 Subclasses can override ``validate_transaction`` to add additional
 checks (fee bounds, network ID matching, etc.); they should ``super()``
@@ -61,7 +61,7 @@ References
 ----------
 
 This module is the structural ancestor of every other signer in
-openproof. The validation policy is the security ancestor of every
+actproof. The validation policy is the security ancestor of every
 on-chain commitment the library produces.
 """
 
@@ -118,7 +118,7 @@ class SignerValidationError(ValueError):
 # CONSTANTS USED IN DEFAULT VALIDATION
 # ─────────────────────────────────────────────────────────────────
 
-_OPENPROOF_NOTE_PREFIX: Final[bytes] = b"openproof:j"
+_ACTPROOF_NOTE_PREFIX: Final[bytes] = b"actproof:j"
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ _OPENPROOF_NOTE_PREFIX: Final[bytes] = b"openproof:j"
 # ─────────────────────────────────────────────────────────────────
 
 class AlgorandSigner(ABC):
-    """Abstract Algorand transaction signer for openproof.
+    """Abstract Algorand transaction signer for actproof.
 
     Concrete subclasses provide the cryptographic backend (mnemonic, KMS,
     HSM, etc.). This base class enforces two structural rules at the level
@@ -203,7 +203,7 @@ class AlgorandSigner(ABC):
 
         Args:
             txn: An ``algosdk.transaction.Transaction``, typically a
-                ``PaymentTxn`` built by ``openproof.anchor.build_transaction``.
+                ``PaymentTxn`` built by ``actproof.anchor.build_transaction``.
 
         Returns:
             An ``algosdk.transaction.SignedTransaction`` ready for
@@ -223,7 +223,7 @@ class AlgorandSigner(ABC):
     # ─────────────────────────────────────────────────────────────
 
     def validate_transaction(self, txn: Any) -> None:
-        """Validate an Algorand transaction against the openproof policy.
+        """Validate an Algorand transaction against the actproof policy.
 
         Concrete subclasses call this from inside ``sign_transaction``
         before invoking the underlying signing backend. The default checks:
@@ -232,7 +232,7 @@ class AlgorandSigner(ABC):
         2. ``txn.sender`` equals ``self.address``.
         3. ``txn.receiver`` equals ``txn.sender`` (0-Algo self-payment).
         4. ``txn.amt`` equals 0.
-        5. ``txn.note`` is bytes and starts with ``b"openproof:j"``.
+        5. ``txn.note`` is bytes and starts with ``b"actproof:j"``.
 
         Subclasses can extend by overriding this method (call ``super()``
         first, then add extra checks).
@@ -271,14 +271,14 @@ class AlgorandSigner(ABC):
             raise SignerValidationError(
                 f"Transaction receiver {getattr(txn, 'receiver', None)!r} "
                 f"does not equal sender (signer address {self.address!r}). "
-                f"openproof anchors use the 0-Algo self-payment pattern."
+                f"actproof anchors use the 0-Algo self-payment pattern."
             )
 
-        # Zero-value: openproof anchors never transfer Algos.
+        # Zero-value: actproof anchors never transfer Algos.
         amount = getattr(txn, "amt", None)
         if amount != 0:
             raise SignerValidationError(
-                f"Transaction amount must be 0, got {amount}. openproof "
+                f"Transaction amount must be 0, got {amount}. actproof "
                 f"anchors are 0-Algo self-payments; the note field carries "
                 f"the commitment, not a value transfer."
             )
@@ -290,9 +290,9 @@ class AlgorandSigner(ABC):
                 f"Transaction note must be bytes, got "
                 f"{type(note).__name__ if note is not None else 'None'}."
             )
-        if not note.startswith(_OPENPROOF_NOTE_PREFIX):
+        if not note.startswith(_ACTPROOF_NOTE_PREFIX):
             raise SignerValidationError(
-                f"Transaction note must start with the openproof ARC-2 "
-                f"prefix {_OPENPROOF_NOTE_PREFIX!r}. Got prefix "
+                f"Transaction note must start with the actproof ARC-2 "
+                f"prefix {_ACTPROOF_NOTE_PREFIX!r}. Got prefix "
                 f"{bytes(note)[:32]!r}."
             )

@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Load and query the openproof-events catalogue (v2 and v3 entries). Validate
+Load and query the actproof-events catalogue (v2 and v3 entries). Validate
 manifests against entries.
 
 A catalogue is a directory tree of JSON files; each file describes one regulated
 or governance act type (NIS2 Article 20 management body approval, EUDR DDS
 preparation, software release, board resolution, etc.). The catalogue is
-maintained in a separate repository (openproof-events) under a permissive
+maintained in a separate repository (actproof-events) under a permissive
 license. This module reads it, indexes the entries by act_type_id, computes
 content hashes for catalogue binding, and validates whether a manifest's claim
 satisfies its entry's required fields and evidence labels.
@@ -17,10 +17,10 @@ Schema versions
 
 Entries may carry one of two schema discriminators:
 
-- ``"openproof.act_catalogue_entry.v2"`` (introduced in openproof-events
+- ``"actproof.act_catalogue_entry.v2"`` (introduced in actproof-events
   v1.4-rc1): fifteen wire-schema fields covering claim shape, evidence,
   signature policy, regulatory citation, and provenance.
-- ``"openproof.act_catalogue_entry.v3"`` (introduced in openproof-events
+- ``"actproof.act_catalogue_entry.v3"`` (introduced in actproof-events
   v1.5-rc1): strict additive superset of v2. Adds four optional sub-objects
   for richer act-type semantics: ``regulated_context_profile``,
   ``prior_receipts_profile``, ``reliance_context``, ``disclosure_profile``.
@@ -37,9 +37,9 @@ vendored copy, volume mount, fresh clone in CI) is a deployment decision the
 library does not constrain. Resolution order:
 
 1. The ``acts_path`` argument to ``load_catalogue`` if provided.
-2. ``$OPENPROOF_CATALOGUE_PATH`` environment variable.
-3. ``./openproof-events/catalogue/acts/`` relative to the current working dir.
-4. ``./vendor/openproof-events/catalogue/acts/`` relative to the current working dir.
+2. ``$ACTPROOF_CATALOGUE_PATH`` environment variable.
+3. ``./actproof-events/catalogue/acts/`` relative to the current working dir.
+4. ``./vendor/actproof-events/catalogue/acts/`` relative to the current working dir.
 
 The schema file is located by default relative to the acts path at
 ``../../spec/schemas/``. Resolution tries v3 first
@@ -137,7 +137,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping, Optional
 
-from openproof.manifest import Manifest
+from actproof.manifest import Manifest
 
 logger = logging.getLogger(__name__)
 
@@ -168,11 +168,11 @@ __all__ = [
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────
 
-SCHEMA_DISCRIMINATOR_V2: str = "openproof.act_catalogue_entry.v2"
+SCHEMA_DISCRIMINATOR_V2: str = "actproof.act_catalogue_entry.v2"
 """Schema discriminator for v2 catalogue entries (fifteen wire-schema fields,
 no v3 sub-objects)."""
 
-SCHEMA_DISCRIMINATOR_V3: str = "openproof.act_catalogue_entry.v3"
+SCHEMA_DISCRIMINATOR_V3: str = "actproof.act_catalogue_entry.v3"
 """Schema discriminator for v3 catalogue entries (fifteen v2 fields plus four
 optional sub-objects: ``regulated_context_profile``, ``prior_receipts_profile``,
 ``reliance_context``, ``disclosure_profile``)."""
@@ -186,17 +186,17 @@ Membership check: ``entry_data["schema"] in SCHEMA_DISCRIMINATORS``."""
 
 SCHEMA_DISCRIMINATOR: str = SCHEMA_DISCRIMINATOR_V2
 """Backward-compatible alias for ``SCHEMA_DISCRIMINATOR_V2``. Retained so that
-external consumers that imported this name from openproof v0.1.0 continue to
+external consumers that imported this name from actproof v0.1.0 continue to
 work. New code should use ``SCHEMA_DISCRIMINATOR_V2`` and
 ``SCHEMA_DISCRIMINATOR_V3`` directly, and ``SCHEMA_DISCRIMINATORS`` for
 membership checks."""
 
-ENV_CATALOGUE_PATH: str = "OPENPROOF_CATALOGUE_PATH"
+ENV_CATALOGUE_PATH: str = "ACTPROOF_CATALOGUE_PATH"
 """Environment variable consulted for the catalogue acts path."""
 
 _FALLBACK_ACTS_PATHS: tuple[str, ...] = (
-    "openproof-events/catalogue/acts",
-    "vendor/openproof-events/catalogue/acts",
+    "actproof-events/catalogue/acts",
+    "vendor/actproof-events/catalogue/acts",
 )
 """Filesystem locations to try if no path is given and the env var is unset."""
 
@@ -307,7 +307,7 @@ class PriorReceiptsProfile:
     ``prior_receipts`` entries whose role is not declared, or to require
     that certain roles be present.
 
-    openproof-events v1.5-rc1 entries leave this block absent (or empty)
+    actproof-events v1.5-rc1 entries leave this block absent (or empty)
     because the May 19 dogfood does not exercise bilateral propagation.
     The first exercised pair lands in v1.5-rc2 by May 30.
 
@@ -370,7 +370,7 @@ class DisclosureProfile:
       holder receipt.
 
     Catalogue releases MAY restrict the use of the private tier.
-    openproof-events v1.5-rc1 entries MUST have ``private_fields = ()``
+    actproof-events v1.5-rc1 entries MUST have ``private_fields = ()``
     (a constraint enforced by the catalogue validator, not by this
     dataclass).
 
@@ -413,8 +413,8 @@ class CatalogueEntry:
     fields not declared in JSON remain ``None``.
 
     Attributes:
-        schema: Schema discriminator. ``"openproof.act_catalogue_entry.v2"``
-            for v2 entries, ``"openproof.act_catalogue_entry.v3"`` for v3
+        schema: Schema discriminator. ``"actproof.act_catalogue_entry.v2"``
+            for v2 entries, ``"actproof.act_catalogue_entry.v3"`` for v3
             entries.
         act_type_id: Canonical identifier under ``op:`` namespace.
         claim_type: snake_case semantic shape identifier.
@@ -791,7 +791,7 @@ def load_catalogue(
 
     Args:
         acts_path: Optional path to the ``catalogue/acts/`` directory. If
-            ``None``, resolves from ``$OPENPROOF_CATALOGUE_PATH`` or fallback
+            ``None``, resolves from ``$ACTPROOF_CATALOGUE_PATH`` or fallback
             locations.
         schema_path: Optional path to the schema JSON file. If ``None``,
             looks for ``../../spec/schemas/act_catalogue_entry.v3.json``

@@ -12,50 +12,115 @@ release. Once 1.0.0 ships, semantic versioning will be strictly followed.
 
 ### Planned
 
-- **v0.2.0** — `docs/` complete with three worked examples (NIS2 / EUDR / software release), GitHub Action wrapper `release-anchor.yml`, EU Trusted List chain validation for RFC 3161 tokens.
+- **v0.2.0** — `docs/` complete with three worked examples (NIS2 / EUDR / software release), GitHub Action wrapper `release-anchor.yml`, EU Trusted List chain validation for RFC 3161 tokens, stricter verifier semantics (PARTIAL state distinct from PASS), disclosure CLI subcommands (`actproof verify-disclosure`, `actproof issue-disclosure`).
 - **v0.3.0** — Cross-implementation conformance test suite landing.
 - **v1.0.0** — API frozen.
 - **v2.0.0** — COSE_Sign1 + SCITT Transparent Statement bridge, once RFC 9943 publishes.
 
-## [0.1.1] — 2026-05-16
+## [0.1.0] — 2026-05-17
 
-### openproof-events schema v3 support
+**First PyPI release of `actproof`.** This is the inaugural published version of the substrate library under its canonical name. The library is installable via `pip install actproof`.
 
-Additive support for openproof-events catalogue schema v3. v3 is a strict superset of v2: existing v2 catalogues load unchanged, v3 catalogues parse the four new optional sub-objects on each entry. Backward-compatible: no breaking changes to the public API. Consumers pinned to v0.1.0 reading v2 entries continue to work without modification.
+### Project history
 
-The companion schema file `act_catalogue_entry.v3.json` lives in openproof-events. This release of openproof-py is what reads and validates entries against it.
+The code in this release was developed under the working name `openproof` on GitHub. The repository at `github.com/deyan-paroushev/openproof-py` was renamed to `github.com/deyan-paroushev/actproof-py` on 2026-05-17; the old URL auto-redirects to the new one. GitHub tags `v0.1.0` (initial public-API surface) and `v0.1.1` (additive schema v3 support) under the previous repository name are the development history of this code; this `v0.1.0` on PyPI is the first published release under the canonical name and supersedes both working-name tags.
+
+The PyPI namespace under `openproof` is unrelated to this project.
+
+### Public contract
+
+- **PyPI distribution name:** `actproof`
+- **Python import:** `actproof`
+- **CLI command:** `actproof`
+- **Receipt profile identifier:** `actproof-jcs-v1`
+- **ARC-2 dApp name on Algorand notes:** `actproof`
+- **Catalogue schema discriminators:** `actproof.act_catalogue_entry.v2` and `actproof.act_catalogue_entry.v3`
+- **Catalogue act-type ID prefix:** `op:` (preserved as historical opaque identifier; migration deferred to v1.6)
+- **Environment variables:** `ACTPROOF_CATALOGUE_PATH`, `ACTPROOF_MNEMONIC`
+
+### Functional scope
+
+This release ships the same functional API as the `openproof` working-name `v0.1.1` GitHub tag. 443 tests pass. No code path differs from the renamed source.
+
+- **`actproof/canonical.py`** — JSON Canonicalization Scheme (RFC 8785) implementation. `canonicalize`, `canonicalize_str`, `canonicalize_from_json`, `hash_canonical`, `hash_canonical_hex`.
+- **`actproof/manifest.py`** — Manifest construction and hashing. `build_manifest`, `manifest_to_dict`, `manifest_from_dict`, `hash_manifest`, `hash_manifest_hex`. Receipt profile constant `RECEIPT_PROFILE_V1 = "actproof-jcs-v1"`. Manifest validation surface (`validate_manifest_shape`, `ManifestValidationError`).
+- **`actproof/catalogue.py`** — Catalogue loader supporting schema v2 (legacy) and schema v3 (current, with four optional sub-objects: `RegulatedContextProfile`, `PriorReceiptsProfile`, `RelianceContext`, `DisclosureProfile`). `load_catalogue`, `validate_manifest`, `hash_entry_file`, `hash_schema_file`.
+- **`actproof/receipt.py`** — Receipt envelope, anchor record, timestamp token, issuer evidence (the holder receipt with salts retained). `ARC2_DAPP_NAME = "actproof"`. Receipt I/O (`read_receipt`, `write_receipt`, `read_issuer_evidence`, `write_issuer_evidence`).
+- **`actproof/timestamp.py`** — RFC 3161 trusted-timestamp acquisition with multi-TSA failover. `acquire_timestamp_token`, `TimestampAuthority`, `TSAAttempt`, `AcquisitionResult`. Default TSA chain pre-configured with three EU qualified TSAs.
+- **`actproof/anchor.py`** — Algorand ARC-2 anchoring. `anchor_manifest` (the high-level entry point), `build_note_payload`, `build_note_bytes`, `build_transaction`. Mainnet/testnet/betanet support.
+- **`actproof/signers/`** — `AlgorandSigner` interface plus two implementations: `MnemonicSigner` (env-var-fed mnemonic) and `GoogleKMSSigner` (GCP Cloud KMS Ed25519-backed signer).
+- **`actproof/verify.py`** — Six-check verification: profile, manifest hash, note payload, catalogue, anchor (ledger round-trip), timestamp. `verify_receipt`, `CheckResult`, `CheckStatus`, `VerificationResult`. `SUPPORTED_RECEIPT_PROFILES = ("actproof-jcs-v1",)`.
+- **`actproof/cli.py`** — `actproof verify`, `actproof issue`, `actproof inspect`. Reads `ACTPROOF_MNEMONIC` env var; mnemonic NEVER from command-line argument.
+
+### Added in this release (beyond the renamed source)
+
+- **`SECURITY.md`** at the repo root. Vulnerability reporting policy. Scope statement (what is and is not protected by the substrate). Coordinated-disclosure timeline. Out-of-scope items explicitly enumerated (legal sufficiency, regulatory acceptance, source-document truthfulness, blockchain finality, issuer key management, TSA qualification status, catalogue semantics).
+- **`.github/workflows/release.yml`** — GitHub Actions workflow for PyPI Trusted Publishing. Triggered by `release.published` event only (not tag push). Uses the `pypi` GitHub Environment with required-reviewer protection. Builds wheel + sdist, runs `twine check`, publishes via `pypa/gh-action-pypi-publish@release/v1`. PEP 740 Sigstore attestations enabled by default.
+
+### Changed (the rename itself)
+
+- **Package name:** `openproof` → `actproof` across all 26 Python files, 6 documentation files, and pyproject.toml. 311 source references and 133 documentation references updated. Directory `openproof/` renamed to `actproof/`. Imports `from openproof.X` become `from actproof.X`. CLI entry-point `openproof` becomes `actproof`. Environment variables `OPENPROOF_*` become `ACTPROOF_*`.
+- **Receipt profile identifier:** `openproof-jcs-v1` → `actproof-jcs-v1`. This is a wire-protocol change visible in every receipt issued from v0.1.0 onward. Since the openproof working-name code never issued public production receipts (only mock/demo samples), no legacy alias is preserved.
+- **ARC-2 dApp name:** `openproof` → `actproof`. The on-chain note prefix is `actproof:j` for JSON notes. The internal constant `_OPENPROOF_NOTE_PREFIX` is now `_ACTPROOF_NOTE_PREFIX = b"actproof:j"`.
+- **Catalogue schema discriminator:** `openproof.act_catalogue_entry.v2` → `actproof.act_catalogue_entry.v2` (and v3). Since no public catalogues exist under the openproof working name beyond development snapshots, both discriminator strings are renamed. The matching change in `actproof-events` v1.5-rc1 lands in the same release window.
+- **Environment variable names:** `OPENPROOF_CATALOGUE_PATH` → `ACTPROOF_CATALOGUE_PATH`. `OPENPROOF_MNEMONIC` → `ACTPROOF_MNEMONIC`. The `cli.py` references and the catalogue loader's env-var lookup are updated together.
+- **pyproject.toml metadata:** description rewritten as "Verifiable receipts of regulated acts. Canonical JSON (RFC 8785), RFC 3161 trusted timestamps, Algorand ARC-2 anchoring, independent verification." Author/maintainer email added (`deyan@advisa.tech`). Keywords extended with `governance`, `evidence`, `transparency`. Classifiers extended with `Intended Audience :: Government`. Development Status remains `3 - Alpha` (API stability not yet promised across minor versions).
+- **Project URLs:** updated to the new `actproof-py` repository URLs throughout, with `Security` added pointing to `SECURITY.md`.
+
+### Notes for consumers
+
+If you depended on the `openproof` working-name code via the git+https URL (`openproof @ git+https://github.com/deyan-paroushev/openproof-py.git@v0.1.1`), the upgrade path is:
+
+1. Replace the requirement line with `actproof==0.1.0`.
+2. Update imports: `from openproof.X import Y` → `from actproof.X import Y`.
+3. Update CLI invocations: `openproof verify ...` → `actproof verify ...`.
+4. Update environment variables: `OPENPROOF_CATALOGUE_PATH` → `ACTPROOF_CATALOGUE_PATH`, etc.
+5. If you issued any receipts under the working name with `receipt_profile = "openproof-jcs-v1"`, those receipts will not verify against this release. Reissue with the new profile. (In practice, only demo receipts existed under the working name.)
+6. Catalogue files using `"schema": "openproof.act_catalogue_entry.v3"` must update to `"schema": "actproof.act_catalogue_entry.v3"`. The matching catalogue release (`actproof-events` v1.5-rc1) ships with the renamed discriminator.
+
+## Historical: working-name development under `openproof`
+
+The entries below describe the development history under the working name `openproof`. They are preserved for transparency. Tags `v0.1.0` and `v0.1.1` exist in the git history of this repository; both were superseded by the canonical `v0.1.0` PyPI release described above.
+
+### [openproof v0.1.1] — 2026-05-16
+
+#### actproof-events schema v3 support
+
+Additive support for actproof-events catalogue schema v3. v3 is a strict superset of v2: existing v2 catalogues load unchanged, v3 catalogues parse the four new optional sub-objects on each entry. Backward-compatible: no breaking changes to the public API. Consumers pinned to v0.1.0 reading v2 entries continue to work without modification.
+
+The companion schema file `act_catalogue_entry.v3.json` lives in actproof-events. This release of actproof-py is what reads and validates entries against it.
 
 ### Added
 
-- **`openproof/catalogue.py`** — Four new frozen dataclasses for the v3 optional sub-objects:
+- **`actproof/catalogue.py`** — Four new frozen dataclasses for the v3 optional sub-objects:
   - `RegulatedContextProfile` — constrains the receipt envelope `regulated_context` shape (allowed context types, allowed submission stages, default context type).
   - `PriorReceiptsProfile` — declares bilateral lifecycle expectations (required and optional `prior_receipts` roles).
   - `RelianceContext` — names the issuer role, counterparty action, later verifiers, and optional reliance statement.
   - `DisclosureProfile` — declares per-field disclosure tiers (`public_fields`, `commitment_fields`, `private_fields`) and `back_propagation_scope` mapping prior-receipt roles to field references visible in the automatic disclosure receipt generated at settlement.
-- **`openproof/catalogue.py`** — Four new constants:
-  - `SCHEMA_DISCRIMINATOR_V2` (= `"openproof.act_catalogue_entry.v2"`).
-  - `SCHEMA_DISCRIMINATOR_V3` (= `"openproof.act_catalogue_entry.v3"`).
+- **`actproof/catalogue.py`** — Four new constants:
+  - `SCHEMA_DISCRIMINATOR_V2` (= `"actproof.act_catalogue_entry.v2"`).
+  - `SCHEMA_DISCRIMINATOR_V3` (= `"actproof.act_catalogue_entry.v3"`).
   - `SCHEMA_DISCRIMINATORS` (frozenset of the above two).
   - `SCHEMA_DISCRIMINATOR` retained as a backward-compatible alias for `SCHEMA_DISCRIMINATOR_V2`.
-- **`openproof/catalogue.py`** — `CatalogueEntry` gains four optional fields (`regulated_context_profile`, `prior_receipts_profile`, `reliance_context`, `disclosure_profile`) defaulting to `None`. Fields are placed after the derived `source_path` and `entry_hash` fields so positional construction with the v2 field order continues to work.
-- **`tests/test_catalogue_v3.py`** — 42 new tests in eight groups covering: v3 dataclass construction and immutability, discriminator constants, full and partial v3 entry parsing, missing-required-field error paths, schema file resolution preference (v3 > v2), mixed v2/v3 catalogues, backward compatibility (v2-only catalogues load identically, v3 blocks on v2 entries are ignored), and a regression check against the real openproof-events v1.4-rc1 catalogue. Existing `tests/test_catalogue.py` is unchanged; its 40 tests continue to pass.
+- **`actproof/catalogue.py`** — `CatalogueEntry` gains four optional fields (`regulated_context_profile`, `prior_receipts_profile`, `reliance_context`, `disclosure_profile`) defaulting to `None`. Fields are placed after the derived `source_path` and `entry_hash` fields so positional construction with the v2 field order continues to work.
+- **`tests/test_catalogue_v3.py`** — 42 new tests in eight groups covering: v3 dataclass construction and immutability, discriminator constants, full and partial v3 entry parsing, missing-required-field error paths, schema file resolution preference (v3 > v2), mixed v2/v3 catalogues, backward compatibility (v2-only catalogues load identically, v3 blocks on v2 entries are ignored), and a regression check against the real actproof-events v1.4-rc1 catalogue. Existing `tests/test_catalogue.py` is unchanged; its 40 tests continue to pass.
 
 ### Changed
 
-- **`openproof/catalogue.py`** — `_parse_entry` accepts either v2 or v3 discriminators. v3 entries with present optional blocks populate the corresponding `CatalogueEntry` fields; absent blocks leave them at `None`. v2 entries always yield `None` for all four v3 fields, even if the JSON happens to carry v3 keys (extras are tolerated, mirroring v0.1.0 permissiveness for unknown dict keys; the JSON schema file enforces strict `additionalProperties: false` for consumers that validate at the schema-file level).
-- **`openproof/catalogue.py`** — `_scan_acts_directory` filter uses membership in `SCHEMA_DISCRIMINATORS` instead of equality with the single old discriminator. Files whose `schema` is unrecognised are silently skipped (unchanged behaviour for unrelated JSON files in the tree).
-- **`openproof/catalogue.py`** — `_resolve_schema_path` tries `act_catalogue_entry.v3.json` first, falls back to `act_catalogue_entry.v2.json`. `Catalogue.schema_hash` reflects whichever file was found. Catalogues that ship the v3 schema file (openproof-events v1.5-rc1 and later) get the v3 hash; catalogues with only the v2 file (openproof-events v1.4-rc1 and earlier) get the v2 hash unchanged.
-- **`openproof/catalogue.py`** — Error message for unrecognised discriminators in `_parse_entry` now names both accepted discriminators rather than just v2. Reachable only via direct `_parse_entry` calls; the directory walker silently skips unknown-discriminator files.
-- **`openproof/__init__.py`**: version bumped to 0.1.1. Re-exports the four new dataclasses and three new constants at the package level (`from openproof import DisclosureProfile` works).
+- **`actproof/catalogue.py`** — `_parse_entry` accepts either v2 or v3 discriminators. v3 entries with present optional blocks populate the corresponding `CatalogueEntry` fields; absent blocks leave them at `None`. v2 entries always yield `None` for all four v3 fields, even if the JSON happens to carry v3 keys (extras are tolerated, mirroring v0.1.0 permissiveness for unknown dict keys; the JSON schema file enforces strict `additionalProperties: false` for consumers that validate at the schema-file level).
+- **`actproof/catalogue.py`** — `_scan_acts_directory` filter uses membership in `SCHEMA_DISCRIMINATORS` instead of equality with the single old discriminator. Files whose `schema` is unrecognised are silently skipped (unchanged behaviour for unrelated JSON files in the tree).
+- **`actproof/catalogue.py`** — `_resolve_schema_path` tries `act_catalogue_entry.v3.json` first, falls back to `act_catalogue_entry.v2.json`. `Catalogue.schema_hash` reflects whichever file was found. Catalogues that ship the v3 schema file (actproof-events v1.5-rc1 and later) get the v3 hash; catalogues with only the v2 file (actproof-events v1.4-rc1 and earlier) get the v2 hash unchanged.
+- **`actproof/catalogue.py`** — Error message for unrecognised discriminators in `_parse_entry` now names both accepted discriminators rather than just v2. Reachable only via direct `_parse_entry` calls; the directory walker silently skips unknown-discriminator files.
+- **`actproof/__init__.py`**: version bumped to 0.1.1. Re-exports the four new dataclasses and three new constants at the package level (`from actproof import DisclosureProfile` works).
 - **`pyproject.toml`**: version bumped to 0.1.1.
 
 ### Design notes
 
-**Why v3 and not a relaxation of v2.** The four new sub-objects on each entry are not just new optional leaf fields; they introduce a structural concept (per-field disclosure tiers, multilateral bilateral propagation scope). Mutating what `"openproof.act_catalogue_entry.v2"` means while keeping the discriminator string the same would be cheap versioning: consumers that pinned to v2 would silently get a different contract. Clean v3 bump preserves the property that a discriminator string identifies a stable schema shape. v2-aware consumers continue to read v2 entries; v3-aware consumers read either.
+**Why v3 and not a relaxation of v2.** The four new sub-objects on each entry are not just new optional leaf fields; they introduce a structural concept (per-field disclosure tiers, multilateral bilateral propagation scope). Mutating what `"actproof.act_catalogue_entry.v2"` means while keeping the discriminator string the same would be cheap versioning: consumers that pinned to v2 would silently get a different contract. Clean v3 bump preserves the property that a discriminator string identifies a stable schema shape. v2-aware consumers continue to read v2 entries; v3-aware consumers read either.
 
 **Why the v2 schema file stays in the repository.** Receipts issued against v1.4-rc1 entries are pinned to the v2 `schema_hash`. Verifying those receipts years later requires the v2 schema file at that hash. Removing it would break the receipt-binding chain. v2 and v3 schema files coexist; each receipt verifies against whichever was current at issue time.
 
-**Why `SCHEMA_DISCRIMINATOR` is kept as an alias.** It was the only discriminator name exported by openproof v0.1.0. Renaming or removing it would break any external consumer that imported it. The alias makes the rename non-breaking. New code is encouraged to use `SCHEMA_DISCRIMINATOR_V2` and `SCHEMA_DISCRIMINATOR_V3` directly, and `SCHEMA_DISCRIMINATORS` for membership checks.
+**Why `SCHEMA_DISCRIMINATOR` is kept as an alias.** It was the only discriminator name exported by actproof v0.1.0. Renaming or removing it would break any external consumer that imported it. The alias makes the rename non-breaking. New code is encouraged to use `SCHEMA_DISCRIMINATOR_V2` and `SCHEMA_DISCRIMINATOR_V3` directly, and `SCHEMA_DISCRIMINATORS` for membership checks.
 
 **Why the four new `CatalogueEntry` fields come after the derived fields.** Dataclass field order determines positional-construction order. Inserting the four new optional fields between the fifteen v2 wire-schema fields and the two derived fields would have shifted `source_path` and `entry_hash` positions, breaking any caller using positional construction of `CatalogueEntry` with the v2 layout. Putting the new fields at the end is semantically odd (wire-schema fields after derived fields) but kindlier to backward compatibility. `_parse_entry` uses keyword arguments throughout, so this is invisible to the loader.
 
@@ -63,52 +128,52 @@ The companion schema file `act_catalogue_entry.v3.json` lives in openproof-event
 
 ### Status: 485 tests across eleven modules
 
-`tests/test_catalogue.py` (40 tests) + `tests/test_catalogue_v3.py` (42 tests) + all other test modules unchanged. Total openproof-py test count: 485 (up from 443 at v0.1.0).
+`tests/test_catalogue.py` (40 tests) + `tests/test_catalogue_v3.py` (42 tests) + all other test modules unchanged. Total actproof-py test count: 485 (up from 443 at v0.1.0).
 
 
 
 ### First usable release
 
-The complete `openproof` library plus a working CLI. Every planned v0.0.x module has landed and is exercised by 423+ tests. v0.1.0 wires those modules into the `openproof` command-line tool, making the library usable end-to-end from a shell.
+The complete `actproof` library plus a working CLI. Every planned v0.0.x module has landed and is exercised by 423+ tests. v0.1.0 wires those modules into the `actproof` command-line tool, making the library usable end-to-end from a shell.
 
-This is the version pushed to `main` on https://github.com/deyan-paroushev/openproof-py for the STS Standards Network application.
+This is the version pushed to `main` on https://github.com/deyan-paroushev/actproof-py for the STS Standards Network application.
 
 ### Added
 
-- **`openproof/cli.py`** — Click-based command-line interface, replacing the v0.0.1 placeholder. Three subcommands:
-  - **`openproof anchor MANIFEST_PATH`** - read a manifest JSON file, optionally acquire an RFC 3161 timestamp, anchor to Algorand in the requested mode, write the resulting receipt.
+- **`actproof/cli.py`** — Click-based command-line interface, replacing the v0.0.1 placeholder. Three subcommands:
+  - **`actproof anchor MANIFEST_PATH`** - read a manifest JSON file, optionally acquire an RFC 3161 timestamp, anchor to Algorand in the requested mode, write the resulting receipt.
     - `--mode {draft,demo,production}` (required, no default).
     - `--output PATH` (required) - where to write the receipt.
-    - `--kms-resource PATH` - GCP KMS Ed25519 key version path for production signing. Mutually exclusive with the `OPENPROOF_MNEMONIC` env var.
+    - `--kms-resource PATH` - GCP KMS Ed25519 key version path for production signing. Mutually exclusive with the `ACTPROOF_MNEMONIC` env var.
     - `--skip-timestamp` - skip RFC 3161 acquisition (offline testing only).
     - `--wait/--no-wait` - poll algod until confirmation (default: wait).
     - `--evidence-output PATH` - optional path to write the issuer evidence JSON (private addendum).
-  - **`openproof verify RECEIPT_PATH`** - read a receipt and run the six checks from `openproof.verify`. Exits 1 on any failure.
-    - `--catalogue PATH` - optional openproof-events catalogue path.
+  - **`actproof verify RECEIPT_PATH`** - read a receipt and run the six checks from `actproof.verify`. Exits 1 on any failure.
+    - `--catalogue PATH` - optional actproof-events catalogue path.
     - `--git-commit SHA` - required when `--catalogue` is provided.
     - `--source-uri URI` - required when `--catalogue` is provided.
     - `--skip-anchor`, `--skip-timestamp` - skip the respective checks.
     - `--json` - JSON output for scripting.
-  - **`openproof validate MANIFEST_PATH`** - validate a manifest against an openproof-events catalogue.
+  - **`actproof validate MANIFEST_PATH`** - validate a manifest against an actproof-events catalogue.
     - `--catalogue PATH`, `--git-commit SHA`, `--source-uri URI` (all required).
     - `--json` - JSON output for scripting.
 - Each command supports `--help` (Click default) and exits with conventional codes: 0 on success, 1 on operational failure, 2 on usage error.
 - Top-level `--verbose` flag enables DEBUG logging to stderr.
-- `--version` flag prints the openproof version.
+- `--version` flag prints the actproof version.
 
 - **`tests/test_cli.py`** — 19 tests across six groups using Click's `CliRunner`. Covers `--version` and `--help`, validate happy path / JSON / catches unknown act / missing file, verify honest / tampered / skip-catalogue / JSON / requires-git-commit, anchor DRAFT-with-mnemonic / mode-required, anchor signer selection error paths (no source / both sources), exit codes. All tests offline; no real algod or TSA calls.
 
 ### Changed
 
 - **`pyproject.toml`**: version bumped to 0.1.0. Development Status classifier moves from "2 - Pre-Alpha" to "3 - Alpha" reflecting feature completeness.
-- **`openproof/__init__.py`**: version bumped to 0.1.0. No new public Python API (CLI is invoked via the `openproof` binary, not via import).
-- **`README.md`**: rewritten to reflect that openproof is now a usable tool. Architecture diagram, install instructions, Quick Start sections for both CLI and Python API, honest scope statement of what v0.1.0 does NOT include.
+- **`actproof/__init__.py`**: version bumped to 0.1.0. No new public Python API (CLI is invoked via the `actproof` binary, not via import).
+- **`README.md`**: rewritten to reflect that actproof is now a usable tool. Architecture diagram, install instructions, Quick Start sections for both CLI and Python API, honest scope statement of what v0.1.0 does NOT include.
 
 ### Design notes
 
-**Mnemonic via env var only.** The CLI does NOT accept mnemonics as command-line arguments. Command-line args leak to shell history (`~/.bash_history`, `~/.zsh_history`), to the kernel's process table (visible via `ps aux` to other users on shared systems), to docker layer metadata, and to log aggregation systems. The env var path (`OPENPROOF_MNEMONIC`) is the lower-risk channel; the env var lives only in the shell session that invoked the command and is dropped when the process exits. Production users avoid mnemonics entirely and use `--kms-resource` for GCP KMS signing.
+**Mnemonic via env var only.** The CLI does NOT accept mnemonics as command-line arguments. Command-line args leak to shell history (`~/.bash_history`, `~/.zsh_history`), to the kernel's process table (visible via `ps aux` to other users on shared systems), to docker layer metadata, and to log aggregation systems. The env var path (`ACTPROOF_MNEMONIC`) is the lower-risk channel; the env var lives only in the shell session that invoked the command and is dropped when the process exits. Production users avoid mnemonics entirely and use `--kms-resource` for GCP KMS signing.
 
-**Mode is required on `openproof anchor`.** No silent default. A user who runs `openproof anchor manifest.json --output receipt.json` gets a Click usage error pointing at the `--mode` flag, not a quiet submission to mainnet because someone changed the default. This is the same principle as the `anchor_manifest()` Python API: explicit choice is the only valid choice.
+**Mode is required on `actproof anchor`.** No silent default. A user who runs `actproof anchor manifest.json --output receipt.json` gets a Click usage error pointing at the `--mode` flag, not a quiet submission to mainnet because someone changed the default. This is the same principle as the `anchor_manifest()` Python API: explicit choice is the only valid choice.
 
 **No "anchor and verify" combined command.** Some early designs had a `commit` subcommand that anchored and then immediately verified. Removed: separating anchor from verify keeps the security model clean (the verifier is independent of the issuer), keeps the failure modes legible (verify failures after anchor are someone else's job to detect, not the issuer's job to silently retry), and matches the actual workflow (anchor at issuance time, verify at audit time, possibly years later).
 
@@ -122,7 +187,7 @@ This release closes the v0.0.x build phase. Every module in the architecture is 
 
 - `canonical.py` (v0.0.2) - RFC 8785 JCS wrapper.
 - `manifest.py` (v0.0.3) - the canonical envelope schema.
-- `catalogue.py` (v0.0.4) - openproof-events catalogue loader and validator.
+- `catalogue.py` (v0.0.4) - actproof-events catalogue loader and validator.
 - `receipt.py` (v0.0.5) - the artifact, public + private split.
 - `timestamp.py` (v0.0.6) - RFC 3161 acquisition with QTSP failover.
 - `anchor.py` (v0.0.7) - ARC-2 disclosed-mode Algorand submission.
@@ -136,7 +201,7 @@ Total: 442 tests across ten modules, all passing offline. Next: v0.2.0 adds docs
 
 ### Added
 
-- **`openproof/verify.py`**: six-check audit-facing verifier. Per-check status (PASS/FAIL/SKIP/ERROR), never short-circuits, structured `VerificationResult` output.
+- **`actproof/verify.py`**: six-check audit-facing verifier. Per-check status (PASS/FAIL/SKIP/ERROR), never short-circuits, structured `VerificationResult` output.
 - **`tests/test_verify.py`**: 33 tests across 16 groups.
 
 ### Changed
@@ -147,7 +212,7 @@ Total: 442 tests across ten modules, all passing offline. Next: v0.2.0 adds docs
 
 ### Added
 
-- **`openproof/signers/` package**: AlgorandSigner ABC with `__init_subclass__` enforcement, MnemonicSigner for testing, GoogleKMSSigner for production GCP users.
+- **`actproof/signers/` package**: AlgorandSigner ABC with `__init_subclass__` enforcement, MnemonicSigner for testing, GoogleKMSSigner for production GCP users.
 - **`tests/test_signers_*.py`**: 65 tests across three modules.
 
 ### Changed
@@ -158,42 +223,42 @@ Total: 442 tests across ten modules, all passing offline. Next: v0.2.0 adds docs
 
 ### Added
 
-- **`openproof/anchor.py`**: three-mode anchoring (DRAFT/DEMO/PRODUCTION), Signer Protocol, ARC-2 disclosed-mode note construction.
+- **`actproof/anchor.py`**: three-mode anchoring (DRAFT/DEMO/PRODUCTION), Signer Protocol, ARC-2 disclosed-mode note construction.
 - **`tests/test_anchor.py`**: 45 tests across 12 groups.
 
 ## [0.0.6] — 2026-05-14
 
 ### Added
 
-- **`openproof/timestamp.py`**: RFC 3161 timestamp acquisition with six-TSA QTSP failover chain.
+- **`actproof/timestamp.py`**: RFC 3161 timestamp acquisition with six-TSA QTSP failover chain.
 - **`tests/test_timestamp.py`**: 41 tests across 12 groups.
 
 ## [0.0.5] — 2026-05-14
 
 ### Added
 
-- **`openproof/receipt.py`**: public Receipt + private IssuerEvidence, reserved COSE_Sign1 forward-compat slot.
+- **`actproof/receipt.py`**: public Receipt + private IssuerEvidence, reserved COSE_Sign1 forward-compat slot.
 - **`tests/test_receipt.py`**: 51 tests across 11 groups.
 
 ## [0.0.4] — 2026-05-14
 
 ### Added
 
-- **`openproof/catalogue.py`**: openproof-events catalogue loader and manifest validator.
+- **`actproof/catalogue.py`**: actproof-events catalogue loader and manifest validator.
 - **`tests/test_catalogue.py`**: 44 tests against synthetic + real v1.4-rc1 fixtures.
 
 ## [0.0.3] — 2026-05-14
 
 ### Added
 
-- **`openproof/manifest.py`**: canonical envelope schema with label-bound evidence.
+- **`actproof/manifest.py`**: canonical envelope schema with label-bound evidence.
 - **`tests/test_manifest.py`**: 68 tests across 11 groups.
 
 ## [0.0.2] — 2026-05-14
 
 ### Added
 
-- **`openproof/canonical.py`**: RFC 8785 JCS wrapping the `rfc8785` library from Trail of Bits.
+- **`actproof/canonical.py`**: RFC 8785 JCS wrapping the `rfc8785` library from Trail of Bits.
 - **`tests/test_canonical.py`**: 76 tests.
 
 ## [0.0.1] — 2026-05-14

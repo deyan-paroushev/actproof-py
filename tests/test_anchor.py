@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.anchor.
+Tests for actproof.anchor.
 
 Mocks AlgodClient and Signer so the suite runs offline.
 
@@ -10,7 +10,7 @@ Twelve test groups:
 * TestAnchorMode: enum values and string conversion.
 * TestConstants: default URLs, timeouts, max note size.
 * TestNotePayload: build_note_payload produces canonical bytes with sorted keys.
-* TestNoteBytes: build_note_bytes prepends "openproof:j" prefix.
+* TestNoteBytes: build_note_bytes prepends "actproof:j" prefix.
 * TestNoteSizeLimit: oversized batching_profile strings are rejected.
 * TestDraftMode: anchor_manifest in DRAFT mode does no signing/submission.
 * TestSignerProtocol: simple objects satisfy the Signer Protocol.
@@ -29,7 +29,7 @@ from typing import Any, Optional
 
 import pytest
 
-from openproof.anchor import (
+from actproof.anchor import (
     ALGORAND_NOTE_MAX_BYTES,
     DEFAULT_ALGOD_URL_MAINNET,
     DEFAULT_ALGOD_URL_TESTNET,
@@ -43,8 +43,8 @@ from openproof.anchor import (
     build_note_payload,
     build_transaction,
 )
-from openproof.manifest import BATCHING_PROFILE_SINGLE
-from openproof.receipt import (
+from actproof.manifest import BATCHING_PROFILE_SINGLE
+from actproof.receipt import (
     ALGORAND_MAINNET,
     ALGORAND_TESTNET,
     ARC2_DAPP_NAME,
@@ -62,7 +62,7 @@ class _FakeSigner:
 
     def __init__(
         self,
-        address: str = "OPENPROOF" + "A" * 49,
+        address: str = "ACTPROOF" + "A" * 49,
         sign_raises: Optional[Exception] = None,
     ) -> None:
         self._address = address
@@ -252,11 +252,11 @@ class TestNoteBytes:
 
     def test_note_starts_with_arc2_prefix(self) -> None:
         note = build_note_bytes(_VALID_HASH)
-        assert note.startswith(b"openproof:j")
+        assert note.startswith(b"actproof:j")
 
     def test_note_payload_after_prefix(self) -> None:
         note = build_note_bytes(_VALID_HASH)
-        payload = note[len(b"openproof:j"):]
+        payload = note[len(b"actproof:j"):]
         # Should equal what build_note_payload returns standalone.
         assert payload == build_note_payload(_VALID_HASH)
 
@@ -273,9 +273,9 @@ class TestNoteBytes:
     def test_note_decodes_to_expected_structure(self) -> None:
         note = build_note_bytes(_VALID_HASH)
         text = note.decode("utf-8")
-        assert text.startswith("openproof:j{")
+        assert text.startswith("actproof:j{")
         # The JSON portion should contain all three keys.
-        json_part = text[len("openproof:j"):]
+        json_part = text[len("actproof:j"):]
         parsed = json.loads(json_part)
         assert set(parsed.keys()) == {"h", "t", "v"}
 
@@ -363,7 +363,7 @@ class TestBuildTransaction:
     def test_builds_payment_txn(self) -> None:
         algod = _FakeAlgodClient()
         sp = algod.suggested_params()
-        signer_addr = "OPENPROOF" + "A" * 49
+        signer_addr = "ACTPROOF" + "A" * 49
         txn = build_transaction(
             _VALID_HASH,
             signer_address=signer_addr,
@@ -376,7 +376,7 @@ class TestBuildTransaction:
     def test_payment_is_self_zero_value(self) -> None:
         algod = _FakeAlgodClient()
         sp = algod.suggested_params()
-        signer_addr = "OPENPROOF" + "A" * 49
+        signer_addr = "ACTPROOF" + "A" * 49
         txn = build_transaction(
             _VALID_HASH,
             signer_address=signer_addr,
@@ -390,14 +390,14 @@ class TestBuildTransaction:
     def test_note_field_set(self) -> None:
         algod = _FakeAlgodClient()
         sp = algod.suggested_params()
-        signer_addr = "OPENPROOF" + "A" * 49
+        signer_addr = "ACTPROOF" + "A" * 49
         txn = build_transaction(
             _VALID_HASH,
             signer_address=signer_addr,
             suggested_params=sp,
         )
         # Note should start with the ARC-2 prefix.
-        assert txn.note.startswith(b"openproof:j")
+        assert txn.note.startswith(b"actproof:j")
 
 
 # ─────────────────────────────────────────────────────────────────

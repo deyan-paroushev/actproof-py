@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Signer implementations for openproof anchoring.
+Signer implementations for actproof anchoring.
 
 A signer holds an Algorand Ed25519 private key (or a reference to one in
-external custody) and signs transactions built by ``openproof.anchor``.
+external custody) and signs transactions built by ``actproof.anchor``.
 Every concrete signer subclasses ``AlgorandSigner`` so the contract
 ("transactions only, never raw bytes") is structurally enforced.
 
@@ -25,7 +25,7 @@ What's in this package
   for users who hold their Ed25519 key in Google Cloud KMS. KMS supports
   Ed25519 natively via the ``EC_SIGN_ED25519`` algorithm; the private
   key never leaves the KMS HSM. Requires the optional ``[gcp]`` install
-  extra (``pip install 'openproof[gcp]'``).
+  extra (``pip install 'actproof[gcp]'``).
 
 What's NOT in this package
 --------------------------
@@ -47,8 +47,8 @@ Example
 
 ::
 
-    from openproof.signers import MnemonicSigner
-    from openproof import anchor_manifest, AnchorMode
+    from actproof.signers import MnemonicSigner
+    from actproof import anchor_manifest, AnchorMode
 
     signer = MnemonicSigner("...25 words separated by spaces...")
     record = anchor_manifest(
@@ -60,18 +60,18 @@ Example
 
 from __future__ import annotations
 
-from openproof.signers.interface import (
+from actproof.signers.interface import (
     FORBIDDEN_METHOD_NAMES,
     AlgorandSigner,
     SignerValidationError,
 )
-from openproof.signers.mnemonic import MnemonicSigner
+from actproof.signers.mnemonic import MnemonicSigner
 
 # Optional: GoogleKMSSigner requires google-cloud-kms. Import is best-effort;
 # if the GCP libraries are not installed, GoogleKMSSigner stays None and
 # attempting to use it raises a clear error.
 try:
-    from openproof.signers.google_kms import GoogleKMSSigner
+    from actproof.signers.google_kms import GoogleKMSSigner
     _GOOGLE_KMS_AVAILABLE: bool = True
     _GOOGLE_KMS_ERROR: str | None = None
 except Exception as exc:  # noqa: BLE001

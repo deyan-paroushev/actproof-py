@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.verify.
+Tests for actproof.verify.
 
 All checks tested in isolation with mocked indexer and mocked tsp_client.
 
@@ -36,9 +36,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from openproof.anchor import build_note_payload
-from openproof.catalogue import load_catalogue
-from openproof.manifest import (
+from actproof.anchor import build_note_payload
+from actproof.catalogue import load_catalogue
+from actproof.manifest import (
     BATCHING_PROFILE_SINGLE,
     Evidence,
     Recipient,
@@ -47,7 +47,7 @@ from openproof.manifest import (
     hash_file_bytes,
     hash_manifest_hex,
 )
-from openproof.receipt import (
+from actproof.receipt import (
     ALGORAND_MAINNET,
     ALGORAND_TESTNET,
     AnchorRecord,
@@ -55,7 +55,7 @@ from openproof.receipt import (
     TimestampToken,
     build_receipt,
 )
-from openproof.verify import (
+from actproof.verify import (
     SUPPORTED_RECEIPT_PROFILES,
     CheckResult,
     CheckStatus,
@@ -83,7 +83,7 @@ pytestmark = skip_if_no_real_catalogue
 def catalogue():
     return load_catalogue(
         acts_path=_CATALOGUE_PATH,
-        source_uri="https://github.com/deyan-paroushev/openproof-events",
+        source_uri="https://github.com/deyan-paroushev/actproof-events",
         git_commit="a" * 40,
     )
 
@@ -148,7 +148,7 @@ def receipt(manifest):
         block_round=39000000,
         confirmed_at="2026-05-14T08:24:00Z",
         note_format="arc-2",
-        note_dapp_name="openproof",
+        note_dapp_name="actproof",
         note_format_version="j",
         note_payload_b64=payload_b64,
     )
@@ -271,11 +271,11 @@ class TestReceiptProfileCheck:
         assert result.status == CheckStatus.PASS
 
     def test_unknown_profile_fails(self, receipt: Receipt) -> None:
-        mutated = replace(receipt, receipt_profile="openproof-v999")
+        mutated = replace(receipt, receipt_profile="actproof-v999")
         result = _check_receipt_profile(mutated)
         assert result.status == CheckStatus.FAIL
-        assert "openproof-v999" in result.detail
-        assert "openproof-jcs-v1" in result.detail
+        assert "actproof-v999" in result.detail
+        assert "actproof-jcs-v1" in result.detail
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -381,7 +381,7 @@ class TestAnchorCheckPass:
 
     def test_matching_on_chain_note_passes(self, receipt: Receipt) -> None:
         # Build a mock indexer that returns the same note the receipt declares.
-        full_note = b"openproof:j" + base64.b64decode(
+        full_note = b"actproof:j" + base64.b64decode(
             receipt.anchor.note_payload_b64
         )
         on_chain_note_b64 = base64.b64encode(full_note).decode("ascii")
@@ -408,7 +408,7 @@ class TestAnchorCheckFail:
         assert "no note" in result.detail.lower()
 
     def test_wrong_prefix_fails(self, receipt: Receipt) -> None:
-        # Note starts with "otherapp:k..." instead of "openproof:j..."
+        # Note starts with "otherapp:k..." instead of "actproof:j..."
         wrong_note = b"otherapp:k" + base64.b64decode(
             receipt.anchor.note_payload_b64
         )
@@ -423,7 +423,7 @@ class TestAnchorCheckFail:
 
     def test_wrong_payload_fails(self, receipt: Receipt) -> None:
         # Right prefix, wrong payload.
-        wrong_note = b"openproof:j" + b'{"h":"deadbeef","t":"x","v":1}'
+        wrong_note = b"actproof:j" + b'{"h":"deadbeef","t":"x","v":1}'
         wrong_b64 = base64.b64encode(wrong_note).decode("ascii")
         mock_indexer = MagicMock()
         mock_indexer.transaction.return_value = {
@@ -457,13 +457,13 @@ class TestTimestampCheckPass:
     def test_valid_token_passes(self, receipt: Receipt) -> None:
         # Mock TSPVerifier.verify to succeed.
         with patch(
-            "openproof.verify._TSPVerifier"
+            "actproof.verify._TSPVerifier"
         ) as mock_verifier_class:
             instance = MagicMock()
             instance.verify.return_value = MagicMock()  # any verified obj
             mock_verifier_class.return_value = instance
             with patch(
-                "openproof.verify._TSP_VERIFIER_AVAILABLE", True
+                "actproof.verify._TSP_VERIFIER_AVAILABLE", True
             ):
                 result = _check_timestamp_signature(receipt)
         assert result.status == CheckStatus.PASS
@@ -477,11 +477,11 @@ class TestTimestampCheckFail:
 
     def test_invalid_token_fails(self, receipt: Receipt) -> None:
         # Mock TSPVerifier.verify to raise.
-        with patch("openproof.verify._TSPVerifier") as mock_verifier_class:
+        with patch("actproof.verify._TSPVerifier") as mock_verifier_class:
             instance = MagicMock()
             instance.verify.side_effect = RuntimeError("bad signature")
             mock_verifier_class.return_value = instance
-            with patch("openproof.verify._TSP_VERIFIER_AVAILABLE", True):
+            with patch("actproof.verify._TSP_VERIFIER_AVAILABLE", True):
                 result = _check_timestamp_signature(receipt)
         assert result.status == CheckStatus.FAIL
         assert "bad signature" in result.detail

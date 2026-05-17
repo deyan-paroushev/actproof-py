@@ -3,7 +3,7 @@
 """
 RFC 8785 JSON Canonicalization Scheme (JCS) with optional compliance discipline.
 
-This module is the foundation of every other operation in openproof. A canonical
+This module is the foundation of every other operation in actproof. A canonical
 manifest is what gets hashed; the hash is what gets anchored on the public ledger
 and timestamped by the QTSP; the receipt that travels outside this library is
 re-verifiable by anyone who recomputes the canonical bytes from the same input
@@ -57,7 +57,7 @@ Quick reference
 
 ::
 
-    from openproof.canonical import canonicalize, hash_canonical_hex
+    from actproof.canonical import canonicalize, hash_canonical_hex
 
     manifest = {
         "act_type_id": "op:eu.nis2.art20.management_body_approval.v1",
@@ -164,7 +164,7 @@ def canonicalize(obj: Any, *, strict: bool = True) -> bytes:
     Args:
         obj: The Python object to canonicalise. May be a dict, list, str,
             int, float (rejected if ``strict``), bool, or ``None``.
-        strict: If ``True`` (default), enforce openproof discipline:
+        strict: If ``True`` (default), enforce actproof discipline:
             no floats, no NaN/Infinity, integers in I-JSON safe range,
             strings that encode to UTF-8. If ``False``, delegate directly
             to ``rfc8785.dumps`` with no pre-validation.
@@ -333,7 +333,7 @@ def _validate_strict(node: Any, path: str) -> None:
 
     raise CanonicalizationError(
         f"Unsupported type at {path}: {type(node).__name__}. "
-        f"openproof canonical accepts dict, list, str, int, bool, None."
+        f"actproof canonical accepts dict, list, str, int, bool, None."
     )
 
 

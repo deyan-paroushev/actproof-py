@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.signers.google_kms.
+Tests for actproof.signers.google_kms.
 
 Mocked tests only; no real GCP KMS calls. Real-network tests (a deploy
 that has access to a real KMS keyring) belong in a separate suite marked
@@ -31,7 +31,7 @@ import pytest
 
 # Conditional import: skip the whole module if google-cloud-kms is not present.
 try:
-    from openproof.signers.google_kms import (
+    from actproof.signers.google_kms import (
         ALGORAND_SIGN_PREFIX,
         GoogleKMSSigner,
         _derive_algorand_address,
@@ -42,7 +42,7 @@ except Exception:
 
 pytestmark = pytest.mark.skipif(
     not _GCP_AVAILABLE,
-    reason="google-cloud-kms not installed (install with: pip install 'openproof[gcp]')",
+    reason="google-cloud-kms not installed (install with: pip install 'actproof[gcp]')",
 )
 
 
@@ -69,10 +69,10 @@ def _build_test_pem() -> bytes:
     )
 
 
-def _build_openproof_txn(sender: str) -> Any:
-    """Build a well-formed openproof transaction for the given sender."""
+def _build_actproof_txn(sender: str) -> Any:
+    """Build a well-formed actproof transaction for the given sender."""
     from algosdk.transaction import SuggestedParams
-    from openproof.anchor import build_transaction
+    from actproof.anchor import build_transaction
 
     sp = SuggestedParams(
         fee=1000, first=1, last=1001,
@@ -118,7 +118,7 @@ def _make_mock_kms_client(
 
 
 _VALID_KMS_PATH = (
-    "projects/openproof-test/locations/europe-west4/keyRings/anchoring/"
+    "projects/actproof-test/locations/europe-west4/keyRings/anchoring/"
     "cryptoKeys/anchor-signer-v1/cryptoKeyVersions/1"
 )
 
@@ -133,7 +133,7 @@ class TestImportAvailability:
         assert GoogleKMSSigner is not None
 
     def test_inherits_algorand_signer(self) -> None:
-        from openproof.signers.interface import AlgorandSigner
+        from actproof.signers.interface import AlgorandSigner
         assert issubclass(GoogleKMSSigner, AlgorandSigner)
 
 
@@ -234,7 +234,7 @@ class TestSignTransaction:
             kms_client=client,
         )
 
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         signed = signer.sign_transaction(txn)
 
         # asymmetric_sign was called.
@@ -258,7 +258,7 @@ class TestSignTransaction:
             kms_resource_name=_VALID_KMS_PATH,
             kms_client=client,
         )
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         signed = signer.sign_transaction(txn)
 
         import base64
@@ -279,8 +279,8 @@ class TestSignTransaction:
         initial_get_count = client.get_public_key.call_count
 
         # Now try to sign a bad transaction (wrong sender).
-        bad_txn = _build_openproof_txn(sender="B" * 58)
-        from openproof.signers.interface import SignerValidationError
+        bad_txn = _build_actproof_txn(sender="B" * 58)
+        from actproof.signers.interface import SignerValidationError
         with pytest.raises(SignerValidationError):
             signer.sign_transaction(bad_txn)
 
@@ -316,7 +316,7 @@ class TestCRCValidation:
             kms_resource_name=_VALID_KMS_PATH,
             kms_client=client,
         )
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         with pytest.raises(RuntimeError, match="CRC32C"):
             signer.sign_transaction(txn)
 
@@ -330,7 +330,7 @@ class TestCRCValidation:
             kms_resource_name=_VALID_KMS_PATH,
             kms_client=client,
         )
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         with pytest.raises(RuntimeError, match="CRC32C"):
             signer.sign_transaction(txn)
 

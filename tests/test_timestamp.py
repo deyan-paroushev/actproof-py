@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.timestamp.
+Tests for actproof.timestamp.
 
 Mocks TSPSigner.sign and TSPVerifier.verify so tests do not hit the network.
 Real-network tests live in a separate suite marked ``@pytest.mark.slow`` and
@@ -32,8 +32,8 @@ from typing import Any
 
 import pytest
 
-from openproof.receipt import TimestampToken
-from openproof.timestamp import (
+from actproof.receipt import TimestampToken
+from actproof.timestamp import (
     DEFAULT_TIMEOUT_SECONDS,
     DEFAULT_TSA_CHAIN,
     SUPPORTED_HASH_ALGORITHMS,
@@ -244,11 +244,11 @@ class TestEmptyChain:
 def _patch_sign_always_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     """All sign() calls return fake token bytes."""
     monkeypatch.setattr(
-        "openproof.timestamp.TSPSigner.sign",
+        "actproof.timestamp.TSPSigner.sign",
         lambda self, message_digest, signing_settings: b"fake DER token bytes",
     )
     monkeypatch.setattr(
-        "openproof.timestamp.TSPVerifier.verify",
+        "actproof.timestamp.TSPVerifier.verify",
         lambda self, token, message_digest: _FakeVerifiedToken(),
     )
 
@@ -260,7 +260,7 @@ def _patch_sign_always_fails(
     def _fail(self, message_digest, signing_settings):  # type: ignore[no-untyped-def]
         raise RuntimeError(error)
 
-    monkeypatch.setattr("openproof.timestamp.TSPSigner.sign", _fail)
+    monkeypatch.setattr("actproof.timestamp.TSPSigner.sign", _fail)
 
 
 def _patch_sign_fails_then_succeeds(
@@ -275,9 +275,9 @@ def _patch_sign_fails_then_succeeds(
             raise RuntimeError(f"TSA #{state['calls']} unreachable")
         return b"fake DER token bytes"
 
-    monkeypatch.setattr("openproof.timestamp.TSPSigner.sign", _maybe_fail)
+    monkeypatch.setattr("actproof.timestamp.TSPSigner.sign", _maybe_fail)
     monkeypatch.setattr(
-        "openproof.timestamp.TSPVerifier.verify",
+        "actproof.timestamp.TSPVerifier.verify",
         lambda self, token, message_digest: _FakeVerifiedToken(),
     )
 

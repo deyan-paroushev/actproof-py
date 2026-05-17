@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.manifest.
+Tests for actproof.manifest.
 
 Eleven test groups:
 
@@ -32,8 +32,8 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from openproof.canonical import canonicalize
-from openproof.manifest import (
+from actproof.canonical import canonicalize
+from actproof.manifest import (
     BATCHING_PROFILE_SINGLE,
     RECEIPT_PROFILE_V1,
     CatalogueBinding,
@@ -64,7 +64,7 @@ def valid_catalogue() -> CatalogueBinding:
     return CatalogueBinding(
         act_type_id="op:eu.nis2.art20.management_body_approval.v1",
         entry_version=1,
-        source_uri="https://github.com/deyan-paroushev/openproof-events",
+        source_uri="https://github.com/deyan-paroushev/actproof-events",
         git_commit="0" * 40,
         entry_hash="sha256:" + "a" * 64,
         schema_hash="sha256:" + "b" * 64,
@@ -163,7 +163,7 @@ class TestDataClasses:
             valid_recipient.role = "other_role"  # type: ignore[misc]
 
     def test_manifest_constructs(self, valid_manifest: Manifest) -> None:
-        assert valid_manifest.receipt_profile == "openproof-jcs-v1"
+        assert valid_manifest.receipt_profile == "actproof-jcs-v1"
         assert valid_manifest.batching_profile == "single_attestation_anchor_v1"
         assert len(valid_manifest.evidence) == 1
         assert len(valid_manifest.recipients) == 1
@@ -290,7 +290,7 @@ class TestSerialisation:
         catalogue = d["catalogue"]
         assert catalogue["act_type_id"] == "op:eu.nis2.art20.management_body_approval.v1"
         assert catalogue["entry_version"] == 1
-        assert catalogue["source_uri"].endswith("openproof-events")
+        assert catalogue["source_uri"].endswith("actproof-events")
         assert len(catalogue["git_commit"]) == 40
         assert catalogue["entry_hash"].startswith("sha256:")
         assert catalogue["schema_hash"].startswith("sha256:")
@@ -333,7 +333,7 @@ class TestSerialisation:
 
     def test_from_dict_rejects_missing_field(self) -> None:
         bad = {
-            "receipt_profile": "openproof-jcs-v1",
+            "receipt_profile": "actproof-jcs-v1",
             "issued_at": "2026-05-14T12:00:00Z",
             # missing "catalogue"
             "issuer": {"org_name": "x", "authority_label": "y"},
@@ -350,7 +350,7 @@ class TestSerialisation:
         # If evidence/recipients are entirely absent from the input dict,
         # treat as empty rather than failing.
         d = {
-            "receipt_profile": "openproof-jcs-v1",
+            "receipt_profile": "actproof-jcs-v1",
             "issued_at": "2026-05-14T12:00:00Z",
             "catalogue": {
                 "act_type_id": "op:t.v1",
@@ -647,7 +647,7 @@ class TestRealisticShapes:
         m = build_manifest(
             act_type_id="op:eu.nis2.art20.management_body_approval.v1",
             catalogue_entry_version=1,
-            catalogue_source_uri="https://github.com/deyan-paroushev/openproof-events",
+            catalogue_source_uri="https://github.com/deyan-paroushev/actproof-events",
             catalogue_git_commit="0" * 40,
             catalogue_entry_hash="sha256:" + "a" * 64,
             catalogue_schema_hash="sha256:" + "b" * 64,
@@ -700,7 +700,7 @@ class TestRealisticShapes:
         m = build_manifest(
             act_type_id="op:eu.eudr.dds_preparation.v1",
             catalogue_entry_version=1,
-            catalogue_source_uri="https://github.com/deyan-paroushev/openproof-events",
+            catalogue_source_uri="https://github.com/deyan-paroushev/actproof-events",
             catalogue_git_commit="1" * 40,
             catalogue_entry_hash="sha256:" + "e" * 64,
             catalogue_schema_hash="sha256:" + "b" * 64,
@@ -743,19 +743,19 @@ class TestRealisticShapes:
 
     def test_software_release_manifest(self) -> None:
         m = build_manifest(
-            act_type_id="op:openproof.software_release.v1",
+            act_type_id="op:actproof.software_release.v1",
             catalogue_entry_version=1,
-            catalogue_source_uri="https://github.com/deyan-paroushev/openproof-events",
+            catalogue_source_uri="https://github.com/deyan-paroushev/actproof-events",
             catalogue_git_commit="2" * 40,
             catalogue_entry_hash="sha256:" + "3" * 64,
             catalogue_schema_hash="sha256:" + "b" * 64,
             issuer_org_name="Advisa EOOD",
             issuer_authority_label="Maintainer",
-            title="openproof-py v0.0.3",
+            title="actproof-py v0.0.3",
             claim={
                 "release_tag": "v0.0.3",
                 "released_at": "2026-05-14T16:00:00Z",
-                "source_url": "https://github.com/deyan-paroushev/openproof-py",
+                "source_url": "https://github.com/deyan-paroushev/actproof-py",
                 "git_commit": "abc" + "0" * 37,
             },
             evidence=[
@@ -804,7 +804,7 @@ class TestDeterminism:
 class TestConstants:
 
     def test_receipt_profile_v1_value(self) -> None:
-        assert RECEIPT_PROFILE_V1 == "openproof-jcs-v1"
+        assert RECEIPT_PROFILE_V1 == "actproof-jcs-v1"
 
     def test_batching_profile_single_value(self) -> None:
         assert BATCHING_PROFILE_SINGLE == "single_attestation_anchor_v1"

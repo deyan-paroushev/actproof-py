@@ -12,7 +12,7 @@ reference to the key version resource path and uses the KMS client to:
 3. Invoke ``asymmetric_sign`` for each transaction signature.
 
 The key never exits KMS; the operator cannot extract it. This is the
-defense-in-depth posture openproof recommends for production anchoring
+defense-in-depth posture actproof recommends for production anchoring
 of compliance evidence.
 
 Optional dependency
@@ -20,7 +20,7 @@ Optional dependency
 
 This module requires the ``[gcp]`` install extra::
 
-    pip install 'openproof[gcp]'
+    pip install 'actproof[gcp]'
 
 which pulls in ``google-cloud-kms`` (the KMS client) and ``google-crc32c``
 (integrity checking on KMS request/response). If those packages are not
@@ -33,7 +33,7 @@ Other clouds (AWS, Azure, Vault)
 AWS KMS does NOT support Ed25519 directly (only RSA and SEC ECC curves
 P-256/P-384/P-521 plus secp256k1). AWS users with HSM-grade requirements
 need either AWS CloudHSM (where Ed25519 is supported) or an envelope-
-encryption pattern. Either path is out-of-scope for openproof's bundled
+encryption pattern. Either path is out-of-scope for actproof's bundled
 signers; AWS users write their own ``AlgorandSigner`` subclass against
 their preferred backend.
 
@@ -58,7 +58,7 @@ import base64
 import warnings
 from typing import Any, Optional
 
-from openproof.signers.interface import AlgorandSigner, SignerValidationError
+from actproof.signers.interface import AlgorandSigner, SignerValidationError
 
 
 __all__ = ["GoogleKMSSigner"]
@@ -69,7 +69,7 @@ __all__ = ["GoogleKMSSigner"]
 # ─────────────────────────────────────────────────────────────────
 
 _INSTALL_HINT = (
-    "Install with: pip install 'openproof[gcp]' "
+    "Install with: pip install 'actproof[gcp]' "
     "(adds google-cloud-kms and google-crc32c)."
 )
 
@@ -113,7 +113,7 @@ class GoogleKMSSigner(AlgorandSigner):
 
     Args:
         kms_resource_name: Full resource path to the KMS Ed25519 key
-            version. Example: ``projects/openproof-prod/locations/
+            version. Example: ``projects/actproof-prod/locations/
             europe-west4/keyRings/anchoring/cryptoKeys/anchor-signer-v1/
             cryptoKeyVersions/1``.
         kms_client: Optional ``KeyManagementServiceClient`` for test

@@ -1,27 +1,27 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-openproof command-line interface.
+actproof command-line interface.
 
-Three subcommands wired to the openproof Python API:
+Three subcommands wired to the actproof Python API:
 
-* ``openproof anchor`` - read a manifest JSON file, optionally acquire an
+* ``actproof anchor`` - read a manifest JSON file, optionally acquire an
   RFC 3161 timestamp, anchor the manifest hash to the Algorand ledger,
   write the resulting receipt.
 
-* ``openproof verify`` - read a receipt JSON file and run the six checks
-  defined in ``openproof.verify``. Prints per-check status. Exits
+* ``actproof verify`` - read a receipt JSON file and run the six checks
+  defined in ``actproof.verify``. Prints per-check status. Exits
   non-zero if any check fails.
 
-* ``openproof validate`` - read a manifest JSON file and validate against
-  an openproof-events catalogue. Prints any validation issues. Exits
+* ``actproof validate`` - read a manifest JSON file and validate against
+  an actproof-events catalogue. Prints any validation issues. Exits
   non-zero if the manifest does not conform.
 
 Security note on mnemonics
 --------------------------
 
 For testing/demo anchoring, the mnemonic is read from the
-``OPENPROOF_MNEMONIC`` environment variable, NEVER from command-line
+``ACTPROOF_MNEMONIC`` environment variable, NEVER from command-line
 arguments. Command-line arguments leak to shell history (``~/.bash_history``,
 ``~/.zsh_history``), to the kernel's process table (visible via ``ps aux``
 to other users on shared systems), to docker layer metadata, and to log
@@ -30,7 +30,7 @@ only path supported.
 
 Production anchoring uses GCP KMS via ``--kms-resource``; the key never
 leaves the HSM. AWS users implement their own signer subclass (see
-``openproof.signers.interface``).
+``actproof.signers.interface``).
 
 Exit codes
 ----------
@@ -56,13 +56,13 @@ import click
 
 
 # ─────────────────────────────────────────────────────────────────
-# VERSION (read lazily so the CLI works even before openproof is fully
-# importable, e.g. for `openproof --version` early-exit cases)
+# VERSION (read lazily so the CLI works even before actproof is fully
+# importable, e.g. for `actproof --version` early-exit cases)
 # ─────────────────────────────────────────────────────────────────
 
 def _get_version() -> str:
     try:
-        from openproof import __version__
+        from actproof import __version__
         return __version__
     except Exception:  # noqa: BLE001
         return "unknown"
@@ -87,7 +87,7 @@ def _setup_logging(verbose: bool) -> None:
 # ─────────────────────────────────────────────────────────────────
 
 @click.group()
-@click.version_option(version=_get_version(), prog_name="openproof")
+@click.version_option(version=_get_version(), prog_name="actproof")
 @click.option(
     "-v", "--verbose",
     is_flag=True,
@@ -95,9 +95,9 @@ def _setup_logging(verbose: bool) -> None:
 )
 @click.pass_context
 def main(ctx: click.Context, verbose: bool) -> None:
-    """openproof: anchor signed JSON manifests; verify anchored receipts.
+    """actproof: anchor signed JSON manifests; verify anchored receipts.
 
-    See ``openproof <command> --help`` for per-command help. The three
+    See ``actproof <command> --help`` for per-command help. The three
     commands are ``anchor`` (commit), ``verify`` (audit), and ``validate``
     (lint a manifest against a catalogue).
     """
@@ -119,7 +119,7 @@ def main(ctx: click.Context, verbose: bool) -> None:
     "--catalogue", "catalogue_path",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     required=True,
-    help="Path to the openproof-events catalogue acts/ directory.",
+    help="Path to the actproof-events catalogue acts/ directory.",
 )
 @click.option(
     "--git-commit",
@@ -134,7 +134,7 @@ def main(ctx: click.Context, verbose: bool) -> None:
     required=True,
     help=(
         "Source URI of the catalogue "
-        "(e.g. https://github.com/deyan-paroushev/openproof-events)."
+        "(e.g. https://github.com/deyan-paroushev/actproof-events)."
     ),
 )
 @click.option(
@@ -149,14 +149,14 @@ def validate(
     source_uri: str,
     as_json: bool,
 ) -> None:
-    """Validate a manifest against an openproof-events catalogue.
+    """Validate a manifest against an actproof-events catalogue.
 
     Reads MANIFEST_PATH, loads the catalogue at the specified git commit,
     runs all catalogue checks, prints any issues. Exits non-zero if the
     manifest does not conform.
     """
-    from openproof.catalogue import load_catalogue, validate_manifest
-    from openproof.manifest import manifest_from_dict
+    from actproof.catalogue import load_catalogue, validate_manifest
+    from actproof.manifest import manifest_from_dict
 
     # Read the manifest.
     try:
@@ -230,7 +230,7 @@ def validate(
     "--catalogue", "catalogue_path",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     help=(
-        "Optional path to the openproof-events catalogue acts/ directory. "
+        "Optional path to the actproof-events catalogue acts/ directory. "
         "If not provided, catalogue_conformance check is skipped."
     ),
 )
@@ -270,12 +270,12 @@ def verify(
 ) -> None:
     """Verify a receipt end-to-end.
 
-    Reads RECEIPT_PATH and runs the six checks defined in openproof.verify.
+    Reads RECEIPT_PATH and runs the six checks defined in actproof.verify.
     Prints per-check status. Exits non-zero if any check fails.
     """
-    from openproof.catalogue import load_catalogue
-    from openproof.receipt import read_receipt
-    from openproof.verify import verify_receipt
+    from actproof.catalogue import load_catalogue
+    from actproof.receipt import read_receipt
+    from actproof.verify import verify_receipt
 
     # Read the receipt.
     try:
@@ -374,7 +374,7 @@ def verify(
 # COMMAND: anchor
 # ─────────────────────────────────────────────────────────────────
 
-_MNEMONIC_ENV_VAR = "OPENPROOF_MNEMONIC"
+_MNEMONIC_ENV_VAR = "ACTPROOF_MNEMONIC"
 
 
 @main.command()
@@ -395,7 +395,7 @@ _MNEMONIC_ENV_VAR = "OPENPROOF_MNEMONIC"
     "--kms-resource",
     help=(
         "GCP KMS Ed25519 key version resource path for production signing. "
-        "Mutually exclusive with the OPENPROOF_MNEMONIC env var."
+        "Mutually exclusive with the ACTPROOF_MNEMONIC env var."
     ),
 )
 @click.option(
@@ -439,16 +439,16 @@ def anchor(
 ) -> None:
     """Anchor a manifest to the Algorand ledger and write a receipt.
 
-    Reads MANIFEST_PATH, builds a signer (from OPENPROOF_MNEMONIC env var
+    Reads MANIFEST_PATH, builds a signer (from ACTPROOF_MNEMONIC env var
     or --kms-resource), optionally acquires an RFC 3161 timestamp, anchors
     the manifest hash to Algorand in the requested mode, writes the
     resulting receipt to --output.
     """
-    from openproof.anchor import AnchorMode, anchor_manifest
-    from openproof.manifest import manifest_from_dict, hash_manifest
-    from openproof.receipt import TimestampToken, build_receipt, write_receipt
-    from openproof.signers import GoogleKMSSigner, MnemonicSigner
-    from openproof.timestamp import acquire_timestamp_token
+    from actproof.anchor import AnchorMode, anchor_manifest
+    from actproof.manifest import manifest_from_dict, hash_manifest
+    from actproof.receipt import TimestampToken, build_receipt, write_receipt
+    from actproof.signers import GoogleKMSSigner, MnemonicSigner
+    from actproof.timestamp import acquire_timestamp_token
 
     # Read the manifest.
     try:

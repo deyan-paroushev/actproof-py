@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.canonical (RFC 8785 JCS with optional strict discipline).
+Tests for actproof.canonical (RFC 8785 JCS with optional strict discipline).
 
 Six test groups:
 
 * TestRFC8785Basics: behaviors required by RFC 8785 itself (key sorting,
   number formatting, escaping, Unicode, empty structures, nesting).
-* TestStrictModeRestrictions: enforces openproof's strict-mode discipline
+* TestStrictModeRestrictions: enforces actproof's strict-mode discipline
   (no floats, no NaN/Infinity, I-JSON integer range, valid UTF-8, no
   duplicate keys when parsing JSON).
 * TestNonStrictMode: confirms strict=False delegates to rfc8785 directly,
@@ -31,7 +31,7 @@ import json
 
 import pytest
 
-from openproof.canonical import (
+from actproof.canonical import (
     CanonicalizationError,
     IJSON_MAX_SAFE_INT,
     IJSON_MIN_SAFE_INT,
@@ -409,7 +409,7 @@ def test_integer_boundary(value: int, should_pass: bool) -> None:
 # ─────────────────────────────────────────────────────────────────
 
 class TestRealisticManifests:
-    """Sanity-check canonicalization on manifest shapes openproof actually uses."""
+    """Sanity-check canonicalization on manifest shapes actproof actually uses."""
 
     def test_nis2_manifest_shape(self) -> None:
         manifest = {
@@ -459,10 +459,10 @@ class TestRealisticManifests:
 
     def test_software_release_manifest(self) -> None:
         manifest = {
-            "act_type_id": "op:openproof.software_release.v1",
+            "act_type_id": "op:actproof.software_release.v1",
             "release_tag": "v0.0.2",
             "released_at": "2026-05-14T16:00:00Z",
-            "source_url": "https://github.com/deyan-paroushev/openproof-py",
+            "source_url": "https://github.com/deyan-paroushev/actproof-py",
             "git_commit": "a" * 40,
             "release_notes_sha256": "b" * 64,
         }

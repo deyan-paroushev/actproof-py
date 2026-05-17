@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for the v3 catalogue surface added in openproof v0.1.1.
+Tests for the v3 catalogue surface added in actproof v0.1.1.
 
 The existing ``tests/test_catalogue.py`` covers the v2 surface and remains
 unchanged. This file covers everything added in v0.1.1:
@@ -29,7 +29,7 @@ unchanged. This file covers everything added in v0.1.1:
   four v3 fields on every ``CatalogueEntry`` at ``None``. v2 entries that
   happen to carry v3 blocks have those blocks ignored. The old
   ``SCHEMA_DISCRIMINATOR`` name still imports and equals v2.
-* TestRealV1_4Catalogue: against the real openproof-events v1.4-rc1
+* TestRealV1_4Catalogue: against the real actproof-events v1.4-rc1
   catalogue (skipped if not available), every entry parses as v2 and all
   four v3 fields are ``None``.
 
@@ -46,7 +46,7 @@ from pathlib import Path
 
 import pytest
 
-from openproof.catalogue import (
+from actproof.catalogue import (
     SCHEMA_DISCRIMINATOR,
     SCHEMA_DISCRIMINATOR_V2,
     SCHEMA_DISCRIMINATOR_V3,
@@ -70,7 +70,7 @@ from tests import (
 # the defensive discriminator-check error message. The walker path
 # (``load_catalogue``) does not exercise this branch because unknown
 # discriminators are silently skipped at the walker level.
-from openproof.catalogue import _parse_entry as _parse_entry_internal
+from actproof.catalogue import _parse_entry as _parse_entry_internal
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -160,9 +160,9 @@ def _write_v3_schema(target_dir: Path) -> Path:
 
 
 def _make_layout(tmp_path: Path) -> tuple[Path, Path]:
-    """Return (acts_dir, schemas_dir) at the standard openproof-events layout."""
-    acts = tmp_path / "openproof-events" / "catalogue" / "acts"
-    schemas = tmp_path / "openproof-events" / "spec" / "schemas"
+    """Return (acts_dir, schemas_dir) at the standard actproof-events layout."""
+    acts = tmp_path / "actproof-events" / "catalogue" / "acts"
+    schemas = tmp_path / "actproof-events" / "spec" / "schemas"
     return acts, schemas
 
 
@@ -325,15 +325,15 @@ class TestV3Dataclasses:
 class TestDiscriminatorConstants:
 
     def test_v2_value(self) -> None:
-        assert SCHEMA_DISCRIMINATOR_V2 == "openproof.act_catalogue_entry.v2"
+        assert SCHEMA_DISCRIMINATOR_V2 == "actproof.act_catalogue_entry.v2"
 
     def test_v3_value(self) -> None:
-        assert SCHEMA_DISCRIMINATOR_V3 == "openproof.act_catalogue_entry.v3"
+        assert SCHEMA_DISCRIMINATOR_V3 == "actproof.act_catalogue_entry.v3"
 
     def test_discriminators_set_membership(self) -> None:
         assert SCHEMA_DISCRIMINATOR_V2 in SCHEMA_DISCRIMINATORS
         assert SCHEMA_DISCRIMINATOR_V3 in SCHEMA_DISCRIMINATORS
-        assert "openproof.act_catalogue_entry.v999" not in SCHEMA_DISCRIMINATORS
+        assert "actproof.act_catalogue_entry.v999" not in SCHEMA_DISCRIMINATORS
         assert "" not in SCHEMA_DISCRIMINATORS
         assert None not in SCHEMA_DISCRIMINATORS
 
@@ -343,7 +343,7 @@ class TestDiscriminatorConstants:
 
     def test_backward_compat_alias_equals_v2(self) -> None:
         """``SCHEMA_DISCRIMINATOR`` is retained as an alias for v2 so that
-        external consumers that imported it from openproof v0.1.0 continue
+        external consumers that imported it from actproof v0.1.0 continue
         to work."""
         assert SCHEMA_DISCRIMINATOR == SCHEMA_DISCRIMINATOR_V2
 
@@ -571,7 +571,7 @@ class TestParseRobustness:
         loader that calls ``_parse_entry`` directly gets a helpful error."""
         with pytest.raises(CatalogueLoadError) as exc:
             _parse_entry_internal(
-                {"schema": "openproof.act_catalogue_entry.v999"},
+                {"schema": "actproof.act_catalogue_entry.v999"},
                 "/fake/path.json",
                 "sha256:dummy",
             )
@@ -673,7 +673,7 @@ class TestMixedCatalogue:
         # A file whose schema is a future or unknown discriminator.
         bogus_path = acts / "test" / "bogus.json"
         bogus_path.write_text(json.dumps({
-            "schema": "openproof.act_catalogue_entry.v999",
+            "schema": "actproof.act_catalogue_entry.v999",
             "act_type_id": "op:test.bogus.v1",
         }))
         _write_v3_schema(schemas)
@@ -747,22 +747,22 @@ class TestBackwardCompat:
         assert entry.reliance_context is None
 
     def test_existing_schema_discriminator_name_still_importable(self) -> None:
-        """A consumer who imported ``SCHEMA_DISCRIMINATOR`` from openproof
+        """A consumer who imported ``SCHEMA_DISCRIMINATOR`` from actproof
         v0.1.0 (the only discriminator name that existed at the time)
         keeps working unchanged: the name still imports and still equals
         the v2 discriminator string."""
-        from openproof.catalogue import SCHEMA_DISCRIMINATOR as imported
-        assert imported == "openproof.act_catalogue_entry.v2"
+        from actproof.catalogue import SCHEMA_DISCRIMINATOR as imported
+        assert imported == "actproof.act_catalogue_entry.v2"
 
     def test_catalogue_entry_v2_positional_construction_unchanged(self) -> None:
         """Positional construction of ``CatalogueEntry`` with the v2 field
         order (fifteen wire-schema fields plus two derived) still works.
         The four new v3 fields were appended after the derived fields
         precisely so positional callers do not break."""
-        from openproof.catalogue import CatalogueEntry, SignaturePolicy
+        from actproof.catalogue import CatalogueEntry, SignaturePolicy
         sp = SignaturePolicy(minimum="issuer_record", supports=())
         entry = CatalogueEntry(
-            "openproof.act_catalogue_entry.v2",
+            "actproof.act_catalogue_entry.v2",
             "op:example.test.v1", "test", "Test entry", None,
             ("required_field",), (), ("evidence_label",),
             ("test_issuer",), (), sp, 1, None, "test", "test.test_vectors.json",
@@ -774,7 +774,7 @@ class TestBackwardCompat:
 
 
 # ─────────────────────────────────────────────────────────────────
-# Group 8: real openproof-events v1.4-rc1 catalogue
+# Group 8: real actproof-events v1.4-rc1 catalogue
 # ─────────────────────────────────────────────────────────────────
 
 @pytestmark_real_catalogue

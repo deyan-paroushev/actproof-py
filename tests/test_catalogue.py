@@ -1,13 +1,13 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.catalogue.
+Tests for actproof.catalogue.
 
 Eleven test groups:
 
 * TestDataClasses: construction and immutability of the five frozen dataclasses.
 * TestPathResolution: env var, fallback paths, explicit path, missing path.
-* TestLoadCatalogue: happy path against the real openproof-events v1.4-rc1 catalogue.
+* TestLoadCatalogue: happy path against the real actproof-events v1.4-rc1 catalogue.
 * TestScanFilters: _deprecated and *.test_vectors.json are skipped.
 * TestDuplicateDetection: two entries with the same act_type_id raise.
 * TestSchemaDiscriminator: only entries with the v2 discriminator are loaded.
@@ -17,7 +17,7 @@ Eleven test groups:
 * TestValidationIssueCodes: every documented issue code is reachable.
 * TestCatalogueQueryAPI: .get, .list_entries, ``in`` operator, len().
 
-The real catalogue lives in the openproof-events repository on disk. For tests
+The real catalogue lives in the actproof-events repository on disk. For tests
 that need a controlled environment, we build small catalogues in pytest's
 ``tmp_path``.
 """
@@ -30,7 +30,7 @@ from pathlib import Path
 
 import pytest
 
-from openproof.catalogue import (
+from actproof.catalogue import (
     ENV_CATALOGUE_PATH,
     SCHEMA_DISCRIMINATOR,
     Catalogue,
@@ -44,19 +44,19 @@ from openproof.catalogue import (
     load_catalogue,
     validate_manifest,
 )
-from openproof.manifest import (
+from actproof.manifest import (
     Evidence,
     Recipient,
     build_manifest,
     hash_email,
 )
 
-# Path to the real openproof-events v1.4-rc1 catalogue fixtures.
-# Resolved via OPENPROOF_EVENTS_ROOT env var or ../openproof-events sibling.
+# Path to the real actproof-events v1.4-rc1 catalogue fixtures.
+# Resolved via ACTPROOF_EVENTS_ROOT env var or ../actproof-events sibling.
 # Tests that require the real catalogue use the @pytestmark_real_catalogue
 # decorator to skip when it is not present.
 from tests import (
-    REAL_OPENPROOF_EVENTS_ROOT,
+    REAL_ACTPROOF_EVENTS_ROOT,
     REAL_ACTS_PATH,
     REAL_SCHEMA_PATH,
     skip_if_no_real_catalogue as pytestmark_real_catalogue,
@@ -117,9 +117,9 @@ def _write_schema(target_dir: Path) -> Path:
 
 @pytest.fixture
 def synthetic_catalogue_root(tmp_path: Path) -> Path:
-    """Build a small catalogue at tmp_path mirroring the openproof-events layout."""
-    acts = tmp_path / "openproof-events" / "catalogue" / "acts"
-    schemas = tmp_path / "openproof-events" / "spec" / "schemas"
+    """Build a small catalogue at tmp_path mirroring the actproof-events layout."""
+    acts = tmp_path / "actproof-events" / "catalogue" / "acts"
+    schemas = tmp_path / "actproof-events" / "spec" / "schemas"
 
     _write_entry(
         acts / "eu" / "test_v1",
@@ -135,7 +135,7 @@ def synthetic_catalogue_root(tmp_path: Path) -> Path:
         required_evidence_labels=["doc_b", "doc_c"],
     )
     _write_schema(schemas)
-    return tmp_path / "openproof-events"
+    return tmp_path / "actproof-events"
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -329,7 +329,7 @@ class TestLoadCatalogue:
 
     @pytestmark_real_catalogue
     def test_loads_real_catalogue(self) -> None:
-        """Smoke test against the actual openproof-events v1.4-rc1 fixtures."""
+        """Smoke test against the actual actproof-events v1.4-rc1 fixtures."""
         cat = load_catalogue(acts_path=REAL_ACTS_PATH)
         assert "op:eu.nis2.art20.management_body_approval.v1" in cat
         assert "op:eu.eudr.dds_preparation.v1" in cat
@@ -368,7 +368,7 @@ class TestScanFilters:
         _write_entry(acts, "op:test.v1")
         # Write a file that would otherwise be parseable but is a test vector.
         tv = acts / "test.v1.test_vectors.json"
-        tv.write_text('{"schema": "openproof.test_vectors.v1", "data": []}')
+        tv.write_text('{"schema": "actproof.test_vectors.v1", "data": []}')
         cat = load_catalogue(acts_path=acts)
         assert len(cat) == 1
 
@@ -702,7 +702,7 @@ class TestValidateRealisticManifests:
         m = build_manifest(
             act_type_id="op:eu.nis2.art20.management_body_approval.v1",
             catalogue_entry_version=entry.version,
-            catalogue_source_uri="https://github.com/deyan-paroushev/openproof-events",
+            catalogue_source_uri="https://github.com/deyan-paroushev/actproof-events",
             catalogue_git_commit="a" * 40,
             catalogue_entry_hash=entry.entry_hash,
             catalogue_schema_hash=cat.schema_hash,
@@ -766,7 +766,7 @@ class TestValidateRealisticManifests:
         m = build_manifest(
             act_type_id=entry.act_type_id,
             catalogue_entry_version=entry.version,
-            catalogue_source_uri="https://github.com/deyan-paroushev/openproof-events",
+            catalogue_source_uri="https://github.com/deyan-paroushev/actproof-events",
             catalogue_git_commit="b" * 40,
             catalogue_entry_hash=entry.entry_hash,
             catalogue_schema_hash=cat.schema_hash,

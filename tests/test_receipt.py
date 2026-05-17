@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.receipt.
+Tests for actproof.receipt.
 
 Eleven test groups:
 
@@ -31,7 +31,7 @@ from pathlib import Path
 
 import pytest
 
-from openproof.manifest import (
+from actproof.manifest import (
     BATCHING_PROFILE_SINGLE,
     RECEIPT_PROFILE_V1,
     Evidence,
@@ -40,7 +40,7 @@ from openproof.manifest import (
     hash_email,
     hash_manifest_hex,
 )
-from openproof.receipt import (
+from actproof.receipt import (
     ALGORAND_MAINNET,
     ALGORAND_TESTNET,
     ARC2_DAPP_NAME,
@@ -74,7 +74,7 @@ def valid_manifest():
     return build_manifest(
         act_type_id="op:eu.nis2.art20.management_body_approval.v1",
         catalogue_entry_version=1,
-        catalogue_source_uri="https://github.com/deyan-paroushev/openproof-events",
+        catalogue_source_uri="https://github.com/deyan-paroushev/actproof-events",
         catalogue_git_commit="0" * 40,
         catalogue_entry_hash="sha256:" + "a" * 64,
         catalogue_schema_hash="sha256:" + "b" * 64,
@@ -114,7 +114,7 @@ def valid_anchor() -> AnchorRecord:
     # A fake but well-formed Algorand txid (52-char base32).
     return AnchorRecord(
         network=ALGORAND_MAINNET,
-        txid="OPENPROOF" + "A" * 43,  # 52 chars total
+        txid="ACTPROOF" + "A" * 43,  # 52 chars total
         block_round=39000000,
         confirmed_at="2026-05-14T08:24:00Z",
         note_format=ARC2_NOTE_FORMAT,
@@ -473,13 +473,13 @@ class TestReceiptSerialisation:
         d = receipt_to_dict(valid_receipt)
         assert d["manifest_hash"].startswith("sha256:")
         # Verify the hash actually matches the manifest's hash.
-        from openproof.manifest import manifest_from_dict
+        from actproof.manifest import manifest_from_dict
         m_back = manifest_from_dict(d["manifest"])
         assert d["manifest_hash"] == "sha256:" + hash_manifest_hex(m_back)
 
     def test_from_dict_rejects_missing_field(self) -> None:
         bad = {
-            "receipt_profile": "openproof-jcs-v1",
+            "receipt_profile": "actproof-jcs-v1",
             "issued_at": "2026-05-14T12:00:00Z",
             # missing "manifest"
         }
@@ -521,7 +521,7 @@ class TestIssuerEvidenceSerialisation:
 
     def test_handles_missing_recipients_as_empty(self) -> None:
         d = {
-            "receipt_profile": "openproof-jcs-v1",
+            "receipt_profile": "actproof-jcs-v1",
             "manifest_hash": "sha256:" + "0" * 64,
             # no plaintext_recipients key
             "issuer_user_id": None,

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-End-to-end verification of openproof receipts.
+End-to-end verification of actproof receipts.
 
 The audit-facing module. Given a receipt, this module answers the question:
 "is this an honest commitment to a manifest hash, made at the time the
@@ -18,9 +18,9 @@ orchestrator does NOT short-circuit on failure (so the caller sees the
 full picture, not just the first thing that went wrong).
 
 1. **receipt_profile_supported** - the ``receipt_profile`` field is one
-   the verifier knows about. v1 verifiers accept ``openproof-jcs-v1``
+   the verifier knows about. v1 verifiers accept ``actproof-jcs-v1``
    only; future v2 verifiers will additionally accept
-   ``openproof-scitt-cose-v2``.
+   ``actproof-scitt-cose-v2``.
 
 2. **manifest_hash_match** - recompute the canonical hash of
    ``receipt.manifest`` and compare to ``receipt.manifest_hash``.
@@ -56,7 +56,7 @@ What this module does NOT do
 * **Does not fetch the catalogue.** Pass a pre-loaded ``Catalogue``. The
   ``receipt.manifest.catalogue.git_commit`` value tells you WHICH commit
   to load; loading itself depends on the caller's environment (network
-  access, git installation, openproof-events checkout location).
+  access, git installation, actproof-events checkout location).
 
 * **Does not validate the TSA certificate chain against the EU Trusted
   List.** ``tsp_client.TSPVerifier`` validates the token structurally
@@ -105,21 +105,21 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Optional
 
-from openproof.anchor import build_note_payload
-from openproof.canonical import hash_canonical
-from openproof.catalogue import (
+from actproof.anchor import build_note_payload
+from actproof.canonical import hash_canonical
+from actproof.catalogue import (
     Catalogue,
     ValidationIssue,
     validate_manifest,
 )
-from openproof.manifest import (
+from actproof.manifest import (
     BATCHING_PROFILE_SINGLE,
     Manifest,
     RECEIPT_PROFILE_V1,
     hash_manifest_hex,
     manifest_to_dict,
 )
-from openproof.receipt import (
+from actproof.receipt import (
     ALGORAND_MAINNET,
     ALGORAND_TESTNET,
     ARC2_DAPP_NAME,
@@ -138,7 +138,7 @@ logger = logging.getLogger(__name__)
 # ─────────────────────────────────────────────────────────────────
 
 try:
-    from openproof.timestamp import TSPVerifier as _TSPVerifier
+    from actproof.timestamp import TSPVerifier as _TSPVerifier
     _TSP_VERIFIER_AVAILABLE: bool = True
 except Exception:  # noqa: BLE001
     _TSP_VERIFIER_AVAILABLE = False
@@ -178,8 +178,8 @@ DEFAULT_INDEXER_URL_TESTNET: str = "https://testnet-idx.algonode.cloud"
 
 SUPPORTED_RECEIPT_PROFILES: frozenset[str] = frozenset({RECEIPT_PROFILE_V1})
 """Receipt profiles this verifier knows how to parse. v1 verifier accepts
-``openproof-jcs-v1`` only. A future v2 verifier will additionally accept
-``openproof-scitt-cose-v2``."""
+``actproof-jcs-v1`` only. A future v2 verifier will additionally accept
+``actproof-scitt-cose-v2``."""
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -377,7 +377,7 @@ def _check_catalogue_conformance(
             status=CheckStatus.SKIP,
             detail=(
                 "No catalogue provided. Pass catalogue=Catalogue(...) to "
-                "openproof.verify_receipt() to enable this check. The "
+                "actproof.verify_receipt() to enable this check. The "
                 "catalogue must be loaded at the git commit named in "
                 "receipt.manifest.catalogue.git_commit."
             ),
@@ -486,7 +486,7 @@ def _check_anchor_on_chain(
             status=CheckStatus.FAIL,
             detail=(
                 f"Transaction {receipt.anchor.txid} exists but has no "
-                f"note field. The transaction is not an openproof anchor."
+                f"note field. The transaction is not an actproof anchor."
             ),
             elapsed_seconds=time.monotonic() - started,
         )
@@ -510,7 +510,7 @@ def _check_anchor_on_chain(
             name="anchor_on_chain",
             status=CheckStatus.FAIL,
             detail=(
-                f"On-chain note does not start with the openproof ARC-2 "
+                f"On-chain note does not start with the actproof ARC-2 "
                 f"prefix {expected_prefix!r}. Got prefix "
                 f"{on_chain_note_bytes[:32]!r}."
             ),
@@ -548,7 +548,7 @@ def _check_timestamp_signature(receipt: Receipt) -> CheckResult:
             status=CheckStatus.SKIP,
             detail=(
                 "tsp_client is not available (transitive dependency "
-                "conflict; see openproof.timestamp for details). Install "
+                "conflict; see actproof.timestamp for details). Install "
                 "or repair tsp-client to enable this check."
             ),
             elapsed_seconds=time.monotonic() - started,

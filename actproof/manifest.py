@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Canonical manifest envelope for openproof.
+Canonical manifest envelope for actproof.
 
 A manifest is the structured commitment an issuer makes. It declares which
 catalogue entry it implements, who the issuer is, what is being claimed, what
@@ -26,7 +26,7 @@ When canonicalized, a manifest produces JSON of this shape:
         "entry_version": 1,
         "git_commit": "0123abcd...",
         "schema_hash": "sha256:def...",
-        "source_uri": "https://github.com/deyan-paroushev/openproof-events"
+        "source_uri": "https://github.com/deyan-paroushev/actproof-events"
       },
       "claim": {
         "approving_body_name": "Board of Directors",
@@ -47,7 +47,7 @@ When canonicalized, a manifest produces JSON of this shape:
         "authority_label": "Management Body",
         "org_name": "Sofia Tech Holdings AD"
       },
-      "receipt_profile": "openproof-jcs-v1",
+      "receipt_profile": "actproof-jcs-v1",
       "recipients": [
         {
           "email_hash": "sha256:...",
@@ -121,7 +121,7 @@ Validation:
   ``ManifestValidationError`` on the first problem.
 
 Catalogue conformance (does this manifest's claim match its act type's
-required fields) is checked separately by ``openproof.catalogue.validate_manifest``
+required fields) is checked separately by ``actproof.catalogue.validate_manifest``
 landing in v0.0.4.
 """
 
@@ -133,7 +133,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Mapping, Sequence
 
-from openproof.canonical import canonicalize, hash_canonical
+from actproof.canonical import canonicalize, hash_canonical
 
 __all__ = [
     "Manifest",
@@ -161,11 +161,11 @@ __all__ = [
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────
 
-RECEIPT_PROFILE_V1: str = "openproof-jcs-v1"
+RECEIPT_PROFILE_V1: str = "actproof-jcs-v1"
 """The receipt profile identifier for v1 (JSON-canonical, no COSE bridge).
 
 When the SCITT COSE_Sign1 bridge lands (post-RFC 9943 publication), v2
-will be ``"openproof-scitt-cose-v2"``, and the receipt's ``receipt_profile``
+will be ``"actproof-scitt-cose-v2"``, and the receipt's ``receipt_profile``
 field is the discriminator that lets verifiers route to the right parser.
 """
 
@@ -259,7 +259,7 @@ class Evidence:
     the manifest and immediately answer: "which file satisfies which required
     evidence label?" The label MUST be one of the entry's
     ``required_evidence_labels`` (this is checked by
-    ``openproof.catalogue.validate_manifest``, not here).
+    ``actproof.catalogue.validate_manifest``, not here).
 
     Attributes:
         label: The catalogue-required evidence label this file satisfies.
@@ -303,7 +303,7 @@ class Manifest:
     """The canonical envelope. Once committed, every field is immutable.
 
     Attributes:
-        receipt_profile: ``"openproof-jcs-v1"`` for this release.
+        receipt_profile: ``"actproof-jcs-v1"`` for this release.
         issued_at: ISO 8601 UTC timestamp with ``Z`` suffix.
         catalogue: Catalogue binding (which entry, which version, which
             source revision).
@@ -605,7 +605,7 @@ def hash_json_bytes(json_bytes: bytes) -> str:
     """Return the ``"sha256:..."`` hash of (canonical) JSON bytes.
 
     Useful for computing ``catalogue_entry_hash`` and ``catalogue_schema_hash``
-    from the on-disk JSON files in the openproof-events repository.
+    from the on-disk JSON files in the actproof-events repository.
 
     Args:
         json_bytes: The JSON file's raw bytes (typically the contents of
@@ -628,7 +628,7 @@ def validate_manifest_shape(m: Manifest) -> None:
     Checks formats of sha256 strings, git commit SHAs, ISO 8601 timestamps,
     byte sizes, and non-emptiness of required strings. Does NOT check
     whether the claim fields satisfy a particular catalogue entry's
-    requirements (that is ``openproof.catalogue.validate_manifest``,
+    requirements (that is ``actproof.catalogue.validate_manifest``,
     landing in v0.0.4).
 
     Args:

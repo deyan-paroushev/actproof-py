@@ -3,27 +3,29 @@ requires = ["hatchling>=1.21"]
 build-backend = "hatchling.build"
 
 [project]
-name = "openproof"
-version = "0.1.1"
-description = "Anchor signed JSON manifests to Algorand with RFC 3161 timestamps. Verify anyone's anchored receipts."
+name = "actproof"
+version = "0.1.0"
+description = "Verifiable receipts of regulated acts. Canonical JSON (RFC 8785), RFC 3161 trusted timestamps, Algorand ARC-2 anchoring, independent verification."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Deyan Paroushev" }
+    { name = "Deyan Paroushev", email = "deyan@advisa.tech" }
 ]
 maintainers = [
-    { name = "Deyan Paroushev" }
+    { name = "Deyan Paroushev", email = "deyan@advisa.tech" }
 ]
 keywords = [
-    "algorand", "rfc-3161", "rfc-8785", "jcs", "scitt",
-    "attestation", "compliance", "transparency", "timestamp", "verification",
+    "attestation", "receipts", "verification", "transparency",
+    "evidence", "governance", "compliance", "timestamping",
+    "canonical-json", "rfc-8785", "rfc-3161", "algorand", "scitt",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Legal Industry",
     "Intended Audience :: Information Technology",
+    "Intended Audience :: Government",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -61,27 +63,28 @@ gcp = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/deyan-paroushev/openproof-py"
-Documentation = "https://github.com/deyan-paroushev/openproof-py/tree/main/docs"
-Issues = "https://github.com/deyan-paroushev/openproof-py/issues"
-Source = "https://github.com/deyan-paroushev/openproof-py"
-Changelog = "https://github.com/deyan-paroushev/openproof-py/blob/main/CHANGELOG.md"
-Catalogue = "https://github.com/deyan-paroushev/openproof-events"
+Homepage = "https://github.com/deyan-paroushev/actproof-py"
+Documentation = "https://github.com/deyan-paroushev/actproof-py/tree/main/docs"
+Issues = "https://github.com/deyan-paroushev/actproof-py/issues"
+Source = "https://github.com/deyan-paroushev/actproof-py"
+Changelog = "https://github.com/deyan-paroushev/actproof-py/blob/main/CHANGELOG.md"
+Security = "https://github.com/deyan-paroushev/actproof-py/blob/main/SECURITY.md"
+Catalogue = "https://github.com/deyan-paroushev/actproof-events"
 
 [project.scripts]
-openproof = "openproof.cli:main"
+actproof = "actproof.cli:main"
 
 [tool.hatch.version]
-path = "openproof/__init__.py"
+path = "actproof/__init__.py"
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "openproof", "tests", "examples", "docs",
+    "actproof", "tests", "examples", "docs",
     "README.md", "LICENSE", "CHANGELOG.md", "pyproject.toml",
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["openproof"]
+packages = ["actproof"]
 
 [tool.ruff]
 line-length = 100
@@ -129,7 +132,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["openproof"]
+source = ["actproof"]
 omit = ["tests/*", "examples/*"]
 
 [tool.coverage.report]

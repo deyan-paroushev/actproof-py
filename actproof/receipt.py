@@ -44,7 +44,7 @@ A verifier holding a receipt JSON file performs:
    ``catalogue_git_commit`` (the verifier fetches the catalogue at that
    commit).
 4. Look up ``receipt.anchor.txid`` on ``receipt.anchor.network``. Fetch
-   the transaction's note bytes. Strip the ``openproof:j`` ARC-2 prefix.
+   the transaction's note bytes. Strip the ``actproof:j`` ARC-2 prefix.
    Compare to the base64-decoded ``receipt.anchor.note_payload_b64``.
 5. Verify ``receipt.trusted_timestamp.token_b64`` is a valid RFC 3161
    token issued by the named TSA, whose imprint equals
@@ -58,8 +58,8 @@ Reserved forward-compat slots
 -----------------------------
 
 The ``receipt_profile`` field is a discriminator. The v1 value
-``"openproof-jcs-v1"`` declares the JSON canonical layout this module
-implements. A future v2 will introduce ``"openproof-scitt-cose-v2"`` once
+``"actproof-jcs-v1"`` declares the JSON canonical layout this module
+implements. A future v2 will introduce ``"actproof-scitt-cose-v2"`` once
 RFC 9943 (SCITT Receipts) leaves AUTH48 and publishes. That format will
 add a ``cose_sign1_b64`` field carrying a COSE_Sign1 signature over the
 manifest hash, and a ``scitt_transparent_statement`` pointer to a SCITT
@@ -102,7 +102,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
-from openproof.manifest import (
+from actproof.manifest import (
     BATCHING_PROFILE_SINGLE,
     RECEIPT_PROFILE_V1,
     Manifest,
@@ -152,8 +152,8 @@ _VALID_NETWORKS: frozenset[str] = frozenset(
 ARC2_NOTE_FORMAT: str = "arc-2"
 """The note format identifier per Algorand ARC-2."""
 
-ARC2_DAPP_NAME: str = "openproof"
-"""The dapp name openproof uses in the ARC-2 note prefix."""
+ARC2_DAPP_NAME: str = "actproof"
+"""The dapp name actproof uses in the ARC-2 note prefix."""
 
 ARC2_FORMAT_VERSION_JSON: str = "j"
 """The ARC-2 format version for disclosed-mode JSON payloads."""
@@ -194,12 +194,12 @@ class AnchorRecord:
             or ``None`` if not yet confirmed.
         confirmed_at: ISO 8601 UTC timestamp of confirmation, or ``None``.
         note_format: ARC-2 note format identifier. Always ``"arc-2"`` in v1.
-        note_dapp_name: ARC-2 dapp name prefix. Always ``"openproof"`` in v1.
+        note_dapp_name: ARC-2 dapp name prefix. Always ``"actproof"`` in v1.
         note_format_version: ARC-2 format version. Always ``"j"`` (JSON
             disclosed mode) in v1.
         note_payload_b64: Base64 (standard, with padding) encoding of the
             note payload bytes - the part AFTER the ARC-2 prefix
-            ``"openproof:j"``. Storing this lets a verifier reconstruct the
+            ``"actproof:j"``. Storing this lets a verifier reconstruct the
             full on-chain note for byte-comparison without re-deriving from
             the manifest hash.
     """
@@ -251,7 +251,7 @@ class TimestampToken:
 
 @dataclass(frozen=True)
 class Receipt:
-    """A public openproof receipt. Contains no plaintext PII.
+    """A public actproof receipt. Contains no plaintext PII.
 
     Bundles the canonical manifest, its content hash, the on-chain anchor
     record, the RFC 3161 timestamp token, and the profile discriminators
@@ -259,8 +259,8 @@ class Receipt:
 
     Attributes:
         receipt_profile: Discriminator for receipt layout. v1 is
-            ``"openproof-jcs-v1"``. The constant ``RECEIPT_PROFILE_V1``
-            from ``openproof.manifest`` spells this out.
+            ``"actproof-jcs-v1"``. The constant ``RECEIPT_PROFILE_V1``
+            from ``actproof.manifest`` spells this out.
         issued_at: ISO 8601 UTC timestamp when the receipt was produced.
             Typically equals ``manifest.issued_at``.
         manifest: The full ``Manifest`` object. The verifier re-canonicalises
@@ -271,7 +271,7 @@ class Receipt:
         anchor: On-chain anchor record.
         trusted_timestamp: RFC 3161 token over the manifest hash.
         batching_profile: ``"single_attestation_anchor_v1"`` for v1. The
-            constant ``BATCHING_PROFILE_SINGLE`` from ``openproof.manifest``
+            constant ``BATCHING_PROFILE_SINGLE`` from ``actproof.manifest``
             spells this out.
     """
     receipt_profile: str

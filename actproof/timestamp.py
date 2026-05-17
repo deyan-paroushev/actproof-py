@@ -4,18 +4,18 @@
 Acquire RFC 3161 trusted timestamp tokens with QTSP failover.
 
 A timestamp token is a TSA's signed assertion that a given hash existed at a
-specific moment in time. For openproof, that hash is typically the
+specific moment in time. For actproof, that hash is typically the
 ``manifest_hash`` of a commitment. The token plus the TSA's certificate
 chain produce non-repudiable proof of existence: anyone who later receives
 the receipt can verify the token's signature, extract the timestamp, and
 confirm "this hash was already known by <date>" without needing to trust
-either the issuer or the openproof platform.
+either the issuer or the actproof platform.
 
 This module owns the **acquisition** half: build an RFC 3161 TimeStampReq,
 POST it to a TSA, parse the TimeStampResp, validate the response is
 well-formed, extract metadata, return a typed ``TimestampToken``. The
 **verification** half (validating the token's CMS signature against the
-TSA's certificate chain end-to-end) lives in ``openproof.verify`` (v0.0.9).
+TSA's certificate chain end-to-end) lives in ``actproof.verify`` (v0.0.9).
 
 QTSP failover chain
 -------------------
@@ -31,7 +31,7 @@ QTSP failover chain
 
 The first four are EU-qualified TSP candidates. Whether a given TSA holds
 qualified status at any given moment depends on the EU Trusted List
-(eIDAS Regulation 910/2014); openproof does not assert qualification, it
+(eIDAS Regulation 910/2014); actproof does not assert qualification, it
 records which TSA actually returned the token. Verifiers can check current
 qualified status against the EUTL themselves.
 
@@ -51,9 +51,9 @@ Acquisition flow
 
 ::
 
-    from openproof.canonical import hash_canonical
-    from openproof.manifest import manifest_to_dict
-    from openproof.timestamp import acquire_timestamp_token
+    from actproof.canonical import hash_canonical
+    from actproof.manifest import manifest_to_dict
+    from actproof.timestamp import acquire_timestamp_token
 
     manifest_dict = manifest_to_dict(my_manifest)
     imprint_bytes = hash_canonical(manifest_dict)  # 32 bytes
@@ -96,7 +96,7 @@ from typing import Any, Callable, Optional, Sequence
 
 import requests
 
-from openproof.receipt import TimestampToken
+from actproof.receipt import TimestampToken
 
 try:
     from tsp_client import SigningSettings, TSPSigner, TSPVerifier
@@ -108,7 +108,7 @@ except Exception as exc:  # noqa: BLE001
     # version conflicts (e.g. cryptography vs pyOpenSSL) can make it fail
     # to import in some environments, sometimes with errors other than
     # ImportError (AttributeError from a removed C-binding symbol, for
-    # example). Catch broadly so the rest of openproof remains usable;
+    # example). Catch broadly so the rest of actproof remains usable;
     # defer failure to call time. Tests can still monkeypatch the
     # placeholder symbols below.
     _TSP_CLIENT_AVAILABLE = False

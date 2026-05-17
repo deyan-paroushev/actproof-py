@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.signers.mnemonic.
+Tests for actproof.signers.mnemonic.
 
 Six test groups:
 
 * TestConstruction: valid mnemonic, address derivation, deterministic.
 * TestInvalidMnemonic: empty, wrong word count, bad checksum.
 * TestWarningEmission: UserWarning fires on construction.
-* TestSignTransaction: well-formed openproof txn is signed; SignedTransaction returned.
+* TestSignTransaction: well-formed actproof txn is signed; SignedTransaction returned.
 * TestValidationFailure: signer refuses to sign transactions that violate policy.
 * TestForbiddenMethodEnforcement: MnemonicSigner cannot be subclassed with sign_bytes.
 """
@@ -19,7 +19,7 @@ import warnings
 
 import pytest
 
-from openproof.signers import (
+from actproof.signers import (
     AlgorandSigner,
     MnemonicSigner,
     SignerValidationError,
@@ -36,10 +36,10 @@ _TEST_MNEMONIC = (
 _TEST_ADDRESS = "5NO6LZDFQNXI7NVF77WHCBPNLHFFWREIIGDHRJRWF2NG7K26SLLT6255BA"
 
 
-def _build_openproof_txn(sender: str):
-    """Build a well-formed openproof transaction for the given sender."""
+def _build_actproof_txn(sender: str):
+    """Build a well-formed actproof transaction for the given sender."""
     from algosdk.transaction import SuggestedParams
-    from openproof.anchor import build_transaction
+    from actproof.anchor import build_transaction
 
     sp = SuggestedParams(
         fee=1000, first=1, last=1001,
@@ -167,16 +167,16 @@ class TestWarningEmission:
 
 class TestSignTransaction:
 
-    def test_signs_valid_openproof_txn(self, signer: MnemonicSigner) -> None:
+    def test_signs_valid_actproof_txn(self, signer: MnemonicSigner) -> None:
         from algosdk.transaction import SignedTransaction
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         signed = signer.sign_transaction(txn)
         assert isinstance(signed, SignedTransaction)
 
     def test_signed_transaction_has_signature(
         self, signer: MnemonicSigner
     ) -> None:
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         signed = signer.sign_transaction(txn)
         # The signature field is set (base64 string of the Ed25519 sig).
         assert signed.signature is not None
@@ -187,7 +187,7 @@ class TestSignTransaction:
     ) -> None:
         # Ed25519 is deterministic; same key + same message = same signature.
         from algosdk.transaction import SuggestedParams
-        from openproof.anchor import build_transaction
+        from actproof.anchor import build_transaction
 
         sp = SuggestedParams(
             fee=1000, first=1, last=1001,
@@ -216,24 +216,24 @@ class TestValidationFailure:
 
     def test_refuses_wrong_sender(self, signer: MnemonicSigner) -> None:
         other = "B" * 58
-        txn = _build_openproof_txn(sender=other)
+        txn = _build_actproof_txn(sender=other)
         with pytest.raises(SignerValidationError, match="sender"):
             signer.sign_transaction(txn)
 
     def test_refuses_non_self_payment(self, signer: MnemonicSigner) -> None:
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         txn.receiver = "B" * 58  # mutate to break self-payment
         with pytest.raises(SignerValidationError, match="receiver"):
             signer.sign_transaction(txn)
 
     def test_refuses_nonzero_amount(self, signer: MnemonicSigner) -> None:
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         txn.amt = 1
         with pytest.raises(SignerValidationError, match="amount"):
             signer.sign_transaction(txn)
 
     def test_refuses_wrong_note_prefix(self, signer: MnemonicSigner) -> None:
-        txn = _build_openproof_txn(sender=signer.address)
+        txn = _build_actproof_txn(sender=signer.address)
         txn.note = b"otherapp:k" + txn.note[10:]
         with pytest.raises(SignerValidationError, match="prefix"):
             signer.sign_transaction(txn)

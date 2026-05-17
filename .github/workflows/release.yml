@@ -1,0 +1,57 @@
+name: Release to PyPI
+
+# Triggered only by an intentional GitHub Release event.
+# Tag pushes alone will NOT trigger publication. This prevents accidental
+# releases from sprint-time tagging.
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+
+    # The `pypi` environment must be configured in the repository settings
+    # at Settings > Environments > pypi, with a required-reviewer protection
+    # rule that requires manual approval before each deployment.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/actproof/
+
+    # Trusted Publishing requires id-token: write so PyPI can verify the
+    # OIDC token issued by GitHub Actions. No long-lived API tokens are
+    # used; PyPI mints a short-lived token per release.
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build distributions
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build
+
+      - name: Verify build with twine
+        run: |
+          python -m pip install --upgrade twine
+          twine check dist/*
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - name: Publish to PyPI via Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1
+        # PEP 740 attestations are enabled by default in v1.11.0+ when
+        # id-token: write is granted. Sigstore-signed attestations are
+        # generated and uploaded automatically.

@@ -37,7 +37,7 @@ Example
 ::
 
     import warnings
-    from openproof.signers import MnemonicSigner
+    from actproof.signers import MnemonicSigner
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=UserWarning)
@@ -55,7 +55,7 @@ from __future__ import annotations
 import warnings
 from typing import Any
 
-from openproof.signers.interface import AlgorandSigner, SignerValidationError
+from actproof.signers.interface import AlgorandSigner, SignerValidationError
 
 
 __all__ = ["MnemonicSigner"]

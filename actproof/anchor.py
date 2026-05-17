@@ -34,14 +34,14 @@ ARC-2 disclosed-mode note format
 
 The on-chain note is::
 
-    openproof:j{"h":"<hex>","t":"<batching_profile>","v":1}
+    actproof:j{"h":"<hex>","t":"<batching_profile>","v":1}
 
-After the ``openproof:j`` ARC-2 prefix, the payload is RFC 8785 canonical
+After the ``actproof:j`` ARC-2 prefix, the payload is RFC 8785 canonical
 JSON with three short fields:
 
 * ``"h"`` - the manifest_hash as lowercase hex (no ``"sha256:"`` prefix to
   keep size minimal; the algorithm is implied by length and by ARC-2 dapp
-  name openproof always using SHA-256 in v1).
+  name actproof always using SHA-256 in v1).
 * ``"t"`` - the batching profile (``"single_attestation_anchor_v1"`` in v1).
 * ``"v"`` - the format version (``1``).
 
@@ -54,7 +54,7 @@ Signer abstraction
 This module defines a ``Signer`` Protocol with two operations: ``address``
 (the Algorand address being anchored from) and ``sign_transaction(txn)``
 (sign a built ``Transaction``, return a ``SignedTransaction``). Concrete
-implementations land in v0.0.8 (``openproof.signers``): ``KMSSigner`` for
+implementations land in v0.0.8 (``actproof.signers``): ``KMSSigner`` for
 AWS KMS production use, ``MnemonicSigner`` for testing only. The Protocol
 deliberately exposes ONLY transaction signing; concrete classes enforce
 the discipline that the underlying key never signs arbitrary bytes.
@@ -85,9 +85,9 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional, Protocol, runtime_checkable
 
-from openproof.canonical import canonicalize
-from openproof.manifest import BATCHING_PROFILE_SINGLE
-from openproof.receipt import (
+from actproof.canonical import canonicalize
+from actproof.manifest import BATCHING_PROFILE_SINGLE
+from actproof.receipt import (
     ALGORAND_MAINNET,
     ALGORAND_TESTNET,
     ARC2_DAPP_NAME,
@@ -164,7 +164,7 @@ NOTE_VERSION: int = 1
 """Note format version. Increment when the ``h``/``t``/``v`` payload
 structure changes (would require coordinated rollout of verifiers)."""
 
-_ARC2_PREFIX: bytes = b"openproof:j"
+_ARC2_PREFIX: bytes = b"actproof:j"
 """ARC-2 note prefix: dapp_name + ':' + format_version."""
 
 
@@ -207,7 +207,7 @@ class AnchorMode(str, Enum):
 class Signer(Protocol):
     """Sign Algorand transactions. Implementations land in v0.0.8.
 
-    Concrete implementations in ``openproof.signers``:
+    Concrete implementations in ``actproof.signers``:
 
     * ``KMSSigner`` - AWS KMS-backed Ed25519 signing for production.
     * ``MnemonicSigner`` - mnemonic-based local signing for testing only.
@@ -265,7 +265,7 @@ def build_note_payload(
 
     Returns:
         Canonical JSON payload as UTF-8 bytes. To get the full note bytes,
-        prepend ``openproof:j``.
+        prepend ``actproof:j``.
     """
     payload_dict = {
         "h": manifest_hash.hex(),
@@ -287,7 +287,7 @@ def build_note_bytes(
         batching_profile: The batching profile identifier.
 
     Returns:
-        Note bytes: ``b"openproof:j" + canonical_payload_bytes``. Goes
+        Note bytes: ``b"actproof:j" + canonical_payload_bytes``. Goes
         directly into the ``note`` field of an Algorand transaction.
 
     Raises:

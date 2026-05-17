@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for openproof.signers.interface.
+Tests for actproof.signers.interface.
 
 Six test groups:
 
 * TestForbiddenMethodNames: the FORBIDDEN_METHOD_NAMES set is complete.
 * TestSubclassEnforcement: __init_subclass__ rejects forbidden method names.
 * TestAbstractMethods: subclasses must implement address and sign_transaction.
-* TestValidateTransactionPasses: a well-formed openproof transaction passes.
+* TestValidateTransactionPasses: a well-formed actproof transaction passes.
 * TestValidateTransactionRejects: each of the five default checks rejects bad inputs.
 * TestSignerValidationError: it's a ValueError subclass for unified handling.
 """
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import pytest
 
-from openproof.signers.interface import (
+from actproof.signers.interface import (
     FORBIDDEN_METHOD_NAMES,
     AlgorandSigner,
     SignerValidationError,
@@ -47,9 +47,9 @@ class _MinimalSigner(AlgorandSigner):
 
 
 def _build_valid_txn(sender: str = "X" * 58) -> object:
-    """Build an openproof-shape Transaction using openproof.anchor."""
+    """Build an actproof-shape Transaction using actproof.anchor."""
     from algosdk.transaction import SuggestedParams
-    from openproof.anchor import build_transaction
+    from actproof.anchor import build_transaction
 
     sp = SuggestedParams(
         fee=1000, first=1, last=1001,
@@ -191,7 +191,7 @@ class TestAbstractMethods:
 
 class TestValidateTransactionPasses:
 
-    def test_well_formed_openproof_txn_passes(self) -> None:
+    def test_well_formed_actproof_txn_passes(self) -> None:
         signer = _MinimalSigner(address="A" * 58)
         txn = _build_valid_txn(sender="A" * 58)
         # Should not raise.
@@ -249,7 +249,7 @@ class TestValidateTransactionRejects:
     def test_note_is_not_bytes_rejected(self) -> None:
         signer = _MinimalSigner(address="A" * 58)
         txn = _build_valid_txn(sender="A" * 58)
-        txn.note = "openproof:j..."  # type: ignore[attr-defined]  # string, not bytes
+        txn.note = "actproof:j..."  # type: ignore[attr-defined]  # string, not bytes
         with pytest.raises(SignerValidationError, match="bytes"):
             signer.validate_transaction(txn)
 

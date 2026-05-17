@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-openproof: anchor signed JSON manifests; verify anyone's anchored receipts.
+actproof: anchor signed JSON manifests; verify anyone's anchored receipts.
 """
 
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.1.0"
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ __version__ = "0.1.1"
 # ─────────────────────────────────────────────────────────────────
 
 # v0.0.2: canonical.py
-from openproof.canonical import (
+from actproof.canonical import (
     CanonicalizationError,
     IJSON_MAX_SAFE_INT,
     IJSON_MIN_SAFE_INT,
@@ -26,7 +26,7 @@ from openproof.canonical import (
 )
 
 # v0.0.3: manifest.py
-from openproof.manifest import (
+from actproof.manifest import (
     BATCHING_PROFILE_SINGLE,
     RECEIPT_PROFILE_V1,
     CatalogueBinding,
@@ -48,7 +48,7 @@ from openproof.manifest import (
 )
 
 # v0.0.4: catalogue.py (extended in v0.1.1 with v3 schema support)
-from openproof.catalogue import (
+from actproof.catalogue import (
     ENV_CATALOGUE_PATH,
     SCHEMA_DISCRIMINATOR,
     SCHEMA_DISCRIMINATOR_V2,
@@ -71,7 +71,7 @@ from openproof.catalogue import (
 )
 
 # v0.0.5: receipt.py
-from openproof.receipt import (
+from actproof.receipt import (
     ALGORAND_BETANET,
     ALGORAND_MAINNET,
     ALGORAND_TESTNET,
@@ -97,7 +97,7 @@ from openproof.receipt import (
 )
 
 # v0.0.6: timestamp.py
-from openproof.timestamp import (
+from actproof.timestamp import (
     DEFAULT_TIMEOUT_SECONDS,
     DEFAULT_TSA_CHAIN,
     SUPPORTED_HASH_ALGORITHMS,
@@ -109,7 +109,7 @@ from openproof.timestamp import (
 )
 
 # v0.0.7: anchor.py
-from openproof.anchor import (
+from actproof.anchor import (
     ALGORAND_NOTE_MAX_BYTES,
     DEFAULT_ALGOD_URL_MAINNET,
     DEFAULT_ALGOD_URL_TESTNET,
@@ -125,7 +125,7 @@ from openproof.anchor import (
 )
 
 # v0.0.8: signers/
-from openproof.signers import (
+from actproof.signers import (
     FORBIDDEN_METHOD_NAMES,
     AlgorandSigner,
     GoogleKMSSigner,
@@ -134,7 +134,7 @@ from openproof.signers import (
 )
 
 # v0.0.9: verify.py
-from openproof.verify import (
+from actproof.verify import (
     DEFAULT_INDEXER_URL_MAINNET,
     DEFAULT_INDEXER_URL_TESTNET,
     SUPPORTED_RECEIPT_PROFILES,
@@ -207,7 +207,7 @@ __all__ = [
 # the GitHub Action wrapper. v0.3.0 adds the conformance test suite.
 # v1.0.0 freezes the API.
 #
-# v0.1.1: Additive support for openproof-events catalogue schema v3.
+# v0.1.1: Additive support for actproof-events catalogue schema v3.
 # Four new optional CatalogueEntry sub-objects (RegulatedContextProfile,
 # PriorReceiptsProfile, RelianceContext, DisclosureProfile) and three
 # new discriminator constants (SCHEMA_DISCRIMINATOR_V2,
@@ -222,12 +222,12 @@ _PLACEHOLDERS: dict[str, str] = {}
 def __getattr__(name: str) -> None:
     if name in _PLACEHOLDERS:
         raise NotImplementedError(
-            f"openproof.{name} is part of the planned public API but is not "
+            f"actproof.{name} is part of the planned public API but is not "
             f"yet implemented in this release ({__version__}). "
             f"It {_PLACEHOLDERS[name]}. "
-            f"See https://github.com/deyan-paroushev/openproof-py/blob/main/CHANGELOG.md"
+            f"See https://github.com/deyan-paroushev/actproof-py/blob/main/CHANGELOG.md"
         )
-    raise AttributeError(f"module 'openproof' has no attribute {name!r}")
+    raise AttributeError(f"module 'actproof' has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
 # SPDX-License-Identifier: MIT
 """
-Tests for the openproof CLI.
+Tests for the actproof CLI.
 
 Uses Click's CliRunner. No real network calls; the anchor command tests
 mock the underlying anchor_manifest function so they exercise the CLI
@@ -31,10 +31,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from openproof.anchor import build_note_payload
-from openproof.catalogue import load_catalogue
-from openproof.cli import main
-from openproof.manifest import (
+from actproof.anchor import build_note_payload
+from actproof.catalogue import load_catalogue
+from actproof.cli import main
+from actproof.manifest import (
     Evidence,
     Recipient,
     build_manifest,
@@ -43,7 +43,7 @@ from openproof.manifest import (
     hash_manifest_hex,
     manifest_to_dict,
 )
-from openproof.receipt import (
+from actproof.receipt import (
     ALGORAND_MAINNET,
     AnchorRecord,
     TimestampToken,
@@ -76,7 +76,7 @@ def _build_manifest_dict() -> dict:
     """Build a manifest dict suitable for writing to a temp file."""
     cat = load_catalogue(
         acts_path=_CATALOGUE_DIR,
-        source_uri="https://github.com/deyan-paroushev/openproof-events",
+        source_uri="https://github.com/deyan-paroushev/actproof-events",
         git_commit="a" * 40,
     )
     nis2 = cat.get("op:eu.nis2.art20.management_body_approval.v1")
@@ -129,7 +129,7 @@ def manifest_file(tmp_path: Path) -> Path:
 @pytest.fixture
 def receipt_file(tmp_path: Path) -> Path:
     """Write a valid receipt to a temp file and return its path."""
-    from openproof.manifest import manifest_from_dict, hash_manifest
+    from actproof.manifest import manifest_from_dict, hash_manifest
 
     manifest_dict = _build_manifest_dict()
     manifest = manifest_from_dict(manifest_dict)
@@ -143,7 +143,7 @@ def receipt_file(tmp_path: Path) -> Path:
         block_round=39000000,
         confirmed_at="2026-05-14T08:24:00Z",
         note_format="arc-2",
-        note_dapp_name="openproof",
+        note_dapp_name="actproof",
         note_format_version="j",
         note_payload_b64=payload_b64,
     )
@@ -169,7 +169,7 @@ class TestMainGroup:
     def test_version_flag(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--version"])
         assert result.exit_code == 0
-        assert "openproof" in result.output
+        assert "actproof" in result.output
 
     def test_help(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["--help"])
@@ -199,7 +199,7 @@ class TestValidate:
             "validate", str(manifest_file),
             "--catalogue", str(_CATALOGUE_DIR),
             "--git-commit", "a" * 40,
-            "--source-uri", "https://github.com/deyan-paroushev/openproof-events",
+            "--source-uri", "https://github.com/deyan-paroushev/actproof-events",
         ])
         assert result.exit_code == 0, result.output
         assert "OK" in result.output
@@ -305,7 +305,7 @@ class TestVerify:
         self, runner: CliRunner, tmp_path: Path
     ) -> None:
         # Build a receipt then mutate the JSON to corrupt manifest_hash.
-        from openproof.manifest import manifest_from_dict, hash_manifest
+        from actproof.manifest import manifest_from_dict, hash_manifest
         manifest_dict = _build_manifest_dict()
         manifest = manifest_from_dict(manifest_dict)
         manifest_hash_bytes = hash_manifest(manifest)
@@ -315,7 +315,7 @@ class TestVerify:
         anchor = AnchorRecord(
             network=ALGORAND_MAINNET, txid="X" * 52,
             block_round=1, confirmed_at="2026-01-01T00:00:00Z",
-            note_format="arc-2", note_dapp_name="openproof",
+            note_format="arc-2", note_dapp_name="actproof",
             note_format_version="j", note_payload_b64=payload_b64,
         )
         ts = TimestampToken(
@@ -366,7 +366,7 @@ class TestAnchor:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("OPENPROOF_MNEMONIC", _TEST_MNEMONIC)
+        monkeypatch.setenv("ACTPROOF_MNEMONIC", _TEST_MNEMONIC)
         receipt_out = tmp_path / "anchored.receipt.json"
         result = runner.invoke(main, [
             "anchor", str(manifest_file),
@@ -377,7 +377,7 @@ class TestAnchor:
         assert result.exit_code == 0, result.output
         assert receipt_out.is_file()
         # Loading the receipt back should work.
-        from openproof.receipt import read_receipt
+        from actproof.receipt import read_receipt
         loaded = read_receipt(receipt_out)
         assert loaded.anchor.txid == ""  # draft mode
 
@@ -390,7 +390,7 @@ class TestAnchor:
     ) -> None:
         # The CLI accepts but does not require --evidence-output. When omitted,
         # only the receipt is written.
-        monkeypatch.setenv("OPENPROOF_MNEMONIC", _TEST_MNEMONIC)
+        monkeypatch.setenv("ACTPROOF_MNEMONIC", _TEST_MNEMONIC)
         receipt_out = tmp_path / "r.json"
         result = runner.invoke(main, [
             "anchor", str(manifest_file),
@@ -409,7 +409,7 @@ class TestAnchor:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("OPENPROOF_MNEMONIC", _TEST_MNEMONIC)
+        monkeypatch.setenv("ACTPROOF_MNEMONIC", _TEST_MNEMONIC)
         result = runner.invoke(main, [
             "anchor", str(manifest_file),
             # missing --mode
@@ -434,7 +434,7 @@ class TestAnchorSignerSelection:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         # Clear the env var to ensure no mnemonic is available.
-        monkeypatch.delenv("OPENPROOF_MNEMONIC", raising=False)
+        monkeypatch.delenv("ACTPROOF_MNEMONIC", raising=False)
         result = runner.invoke(main, [
             "anchor", str(manifest_file),
             "--mode", "draft",
@@ -443,7 +443,7 @@ class TestAnchorSignerSelection:
         ])
         assert result.exit_code == 2
         # The error must explain BOTH paths exist.
-        assert "OPENPROOF_MNEMONIC" in result.output
+        assert "ACTPROOF_MNEMONIC" in result.output
         assert "kms-resource" in result.output
 
     def test_error_when_both_kms_and_mnemonic_set(
@@ -453,7 +453,7 @@ class TestAnchorSignerSelection:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("OPENPROOF_MNEMONIC", _TEST_MNEMONIC)
+        monkeypatch.setenv("ACTPROOF_MNEMONIC", _TEST_MNEMONIC)
         result = runner.invoke(main, [
             "anchor", str(manifest_file),
             "--mode", "draft",
@@ -463,7 +463,7 @@ class TestAnchorSignerSelection:
         ])
         # Choosing one is required.
         assert result.exit_code == 2
-        assert "OPENPROOF_MNEMONIC" in result.output
+        assert "ACTPROOF_MNEMONIC" in result.output
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -500,7 +500,7 @@ class TestExitCodes:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setenv("OPENPROOF_MNEMONIC", _TEST_MNEMONIC)
+        monkeypatch.setenv("ACTPROOF_MNEMONIC", _TEST_MNEMONIC)
         result = runner.invoke(main, [
             "anchor", str(manifest_file),
             "--mode", "draft",
