@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 """
 Receipt: the artifact that travels outside the issuing platform.
 

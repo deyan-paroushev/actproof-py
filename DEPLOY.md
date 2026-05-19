@@ -9,7 +9,7 @@ This is the actproof-py v0.1.0 source tree, ready to push to
 actproof-py/
 ├── README.md                       Project README
 ├── CHANGELOG.md                    Full v0.0.1 → v0.1.0 history
-├── LICENSE                         MIT
+├── LICENSE                         Apache-2.0
 ├── DEPLOY.md                       This file
 ├── pyproject.toml                  Hatchling build, dependencies pinned
 ├── .gitignore
@@ -43,7 +43,7 @@ Library and CLI for anchoring signed JSON manifests to Algorand mainnet
 with RFC 3161 qualified timestamps, plus an independent verifier for
 anyone's anchored receipts.
 
-10 modules, 443 passing tests, MIT licensed.
+10 modules, 443 passing tests, Apache-2.0 licensed.
 
 Implements RFC 8785 JCS, RFC 3161 TSP, Algorand ARC-2 disclosed-mode
 notes, and tracks draft-ietf-scitt-architecture for the v2 COSE_Sign1

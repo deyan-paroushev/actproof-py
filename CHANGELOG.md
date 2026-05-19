@@ -16,6 +16,36 @@ release. Once 1.0.0 ships, semantic versioning will be strictly followed.
 - **v1.0.0** — API frozen.
 - **v2.0.0** — COSE_Sign1 + SCITT Transparent Statement bridge, once RFC 9943 publishes.
 
+## [0.3.2] — 2026-05-19
+
+**License switch from MIT to Apache-2.0.** Forward-looking positioning of
+actproof-py as verification infrastructure rather than a small utility
+library: Apache-2.0 provides an explicit patent grant suitable for
+standards-facing work and institutional adoption, while remaining as
+permissive as MIT for commercial and proprietary embedding.
+
+### Changed
+
+- **LICENSE file replaced** with the canonical Apache License 2.0 text.
+- **`pyproject.toml`** updated: license expression now `"Apache-2.0"`
+  with `license-files = ["LICENSE"]` per the modern Python packaging
+  guidance. Classifier updated to `License :: OSI Approved :: Apache
+  Software License`.
+- **SPDX headers** in all 27 source files (`actproof/*.py`,
+  `actproof/signers/*.py`, `tests/*.py`) changed from
+  `SPDX-License-Identifier: MIT` to `SPDX-License-Identifier: Apache-2.0`.
+- **README, DEPLOY, and STS standards documentation** updated to state
+  Apache-2.0 throughout.
+
+### Notes
+
+- Existing users on v0.3.1 (MIT) retain MIT rights for that release.
+  All v0.3.2 and later releases are governed by Apache-2.0.
+- Copyright remains "2026 Deyan Paroushev." No change to authorship or
+  contributor structure.
+- No API changes, no behavioural changes, no dependency changes. This is
+  a pure licensing release.
+
 ## [0.3.1] — 2026-05-19
 
 **Packaging hotfix.** Resolves an internal contradiction in v0.3.0's

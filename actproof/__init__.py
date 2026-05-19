@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 """
 actproof: anchor signed JSON manifests; verify anyone's anchored receipts.
 """
 
 from __future__ import annotations
 
-__version__ = "0.3.1"
+__version__ = "0.3.2"
 
 
 # ─────────────────────────────────────────────────────────────────

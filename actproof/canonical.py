@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 """
 RFC 8785 JSON Canonicalization Scheme (JCS) with optional compliance discipline.
 

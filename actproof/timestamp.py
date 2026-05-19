@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 """
 Acquire RFC 3161 trusted timestamp tokens with QTSP failover.
 

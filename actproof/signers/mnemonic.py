@@ -1,5 +1,5 @@
 # SPDX-FileCopyrightText: 2026 Deyan Paroushev
-# SPDX-License-Identifier: MIT
+# SPDX-License-Identifier: Apache-2.0
 """
 MnemonicSigner: Algorand signer that holds a mnemonic in process
 memory.

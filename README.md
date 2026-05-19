@@ -1,16 +1,17 @@
 # actproof
 
-Verifiable receipts of regulated acts. Canonical JSON (RFC 8785), RFC 3161
-trusted timestamps, Algorand ARC-2 anchoring, independent verification by
-any party with a Python install.
+Verifiable evidence receipts for institutional records, regulated acts, and
+public attestations. Canonical JSON (RFC 8785), RFC 3161 trusted timestamps,
+Algorand ARC-2 anchoring, independent verification by any party with a Python
+install.
 
 `actproof` produces cryptographic receipts that any third party can verify
-without trusting the issuing platform. A receipt binds: the regulated act
-being recorded (from the `actproof-events` catalogue), the canonical JSON
-of the issuer's evidence, a qualified timestamp from a trusted timestamp
-authority, and a transaction on the Algorand public ledger that carries
-the same hash. The verifier reproduces the bytes locally and confirms each
-binding.
+without trusting the issuing platform. A receipt binds: the record or act
+being documented (optionally classified against the `actproof-events`
+catalogue for regulated acts), the canonical JSON of the issuer's evidence,
+a qualified timestamp from a trusted timestamp authority, and a transaction
+on the Algorand public ledger that carries the same hash. The verifier
+reproduces the bytes locally and confirms each binding.
 
 ## What actproof does not claim
 
@@ -206,18 +207,91 @@ actproof composes five published standards rather than inventing new ones:
   v2 parser when COSE_Sign1 + SCITT Transparent Statement becomes
   standardised.
 
-## What's NOT in v0.1.0
+## Independent use outside Quoruna
+
+`actproof` is a standalone Python library. It does not require Quoruna, an
+account, a hosted service, or any vendor trust. The intended use cases:
+
+* **Regulated industries.** Compliance evidence with verifiable timestamps:
+  pharma batch records, financial reporting attestations, NIS2 incident
+  reports, EUDR due-diligence statements, AI Act risk assessments.
+* **Civil society and journalism.** Verifiable provenance of reporting,
+  research outputs, and document releases without a trusted intermediary.
+* **Academic research.** Pre-registration of analysis plans, anchored
+  research artifacts, reproducibility receipts.
+* **Public-sector records.** Public decisions, council resolutions,
+  procurement evidence, transparency anchors.
+* **Other receipt and attestation systems.** Any application that today
+  emits "trust us" PDFs can emit an actproof receipt instead and let the
+  recipient verify without contacting the issuer.
+
+Quoruna is one consuming application. It is not the only intended
+consumer. The library API is independent of any particular product or
+hosted service.
+
+## API stability
+
+The package currently exposes a deliberately large API surface to let
+adopters work at whatever level suits them. Before the v1.0 release,
+the following discipline applies:
+
+* **Stable.** `canonicalize`, `hash_canonical`, `hash_canonical_hex`,
+  `build_manifest`, `manifest_to_dict`, `manifest_from_dict`,
+  `hash_manifest`, `hash_manifest_hex`, `Receipt`, `read_receipt`,
+  `write_receipt`, `verify_receipt`, `CheckResult`, `VerificationResult`.
+  These will not break between minor versions before v1.0.
+* **Experimental.** `Catalogue`, `validate_manifest`, RFC 3161 TSA
+  chain configuration, the `AnchorMode` enum, and the signer
+  abstraction. Subject to refinement before v1.0.
+* **Internal-but-exported.** Constants like `IJSON_MAX_SAFE_INT`,
+  `ARC2_NOTE_FORMAT`, and `SCHEMA_DISCRIMINATOR_V3`. Available for
+  power users but may change.
+
+The full list is in `actproof/__init__.py`. v1.0.0 will declare the final
+stable surface and freeze it under semantic versioning.
+
+## Roadmap
+
+* **v0.4.0** — Pluggable anchor backend architecture (`AnchorBackend`
+  Protocol). Algorand stays as the production backend; the protocol
+  abstraction makes Hedera Consensus Service, Stellar memo-hash, Bitcoin
+  OP_RETURN, and Ethereum implementations feasible without changes to
+  the canonicalisation, receipt, or verifier code. Also migrates off
+  `tsp-client` 0.2.1 onto `rfc3161-client` (Trail of Bits) to remove
+  the legacy pyOpenSSL cap.
+* **v0.5.0** — Receipt profile registry. Explicit named profiles
+  (`actproof-jcs-v1`, `actproof-algorand-arc2-v1`, `actproof-rfc3161-v1`)
+  and a stable verifier dispatch surface for adopters.
+* **v1.0.0** — Stable API frozen. Conformance test vectors finalised.
+* **v2.0.0** — COSE_Sign1 + SCITT Transparent Statement bridge once
+  RFC 9943 publishes.
+
+## What actproof does NOT yet ship
 
 * **EU Trusted List chain validation** for RFC 3161 tokens. The current
   verifier checks the token is well-formed and self-consistent; full
-  chain validation against EUTL is v0.2.x.
-* **Conformance test vectors** for cross-implementation interop. The
-  conformance suite lands in v0.3.0.
-* **GitHub Action wrapper** for one-call anchoring from a CI step. Lands
-  in v0.2.0.
-* **Worked examples** for NIS2, EUDR, and software-release use cases.
-  Land in v0.2.0.
+  chain validation against EUTL is on the v0.5.x roadmap.
+* **GitHub Action wrapper** for one-call anchoring from a CI step.
+* **Worked end-to-end examples** for NIS2, EUDR, AI Act, and
+  software-release use cases. Conformance vectors and example receipts
+  land in `examples/` and `docs/CONFORMANCE_VECTORS.md` in v0.3.x.
 
 ## License
 
-MIT. The actproof-events catalogue is CC0 / Apache-2.0.
+Apache-2.0. See `LICENSE`. The `actproof-events` catalogue (sibling
+repository) is CC0 / Apache-2.0.
+
+## Why Apache-2.0
+
+`actproof` is intended as reusable verification infrastructure. Apache-2.0
+provides:
+
+* The same broad permission to embed in commercial or proprietary work
+  as MIT.
+* An explicit contributor patent licence (Section 3 of the licence text),
+  which matters for cryptographic and protocol code.
+* A clearer legal posture for institutional and public-sector adopters.
+
+If you previously consumed `actproof <= 0.3.1` under MIT, those releases
+remain available on PyPI under MIT. All `actproof >= 0.3.2` releases are
+governed by Apache-2.0.
