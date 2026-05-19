@@ -779,24 +779,41 @@ class TestBackwardCompat:
 
 @pytestmark_real_catalogue
 class TestRealV1_4Catalogue:
-    """v1.4-rc1 ships only v2 entries. Loading it with v0.1.1 must yield
-    every entry as v2 with all four v3 fields at ``None``. This protects
-    against regressions where an additive change to the parser accidentally
-    affects v2 loading."""
+    """v1.4-rc1 ships v3 entries: regulated_context_profile,
+    prior_receipts_profile, reliance_context, and disclosure_profile are
+    populated on every authoritative entry. This test guards against
+    regressions where an additive parser change accidentally fails to
+    surface those fields.
 
-    def test_all_real_entries_load_as_v2(self) -> None:
+    Historical note: an earlier version of this test asserted v2 entries
+    only because the rc1 line had not yet upgraded to v3. The catalogue
+    has since landed v3 entries authoritatively (see actproof-events
+    v1.4-rc1 ship notes), so the assertions here flipped from "all
+    fields None" to "v3 fields populated".
+    """
+
+    def test_all_real_entries_load_as_v3(self) -> None:
         cat = load_catalogue(acts_path=REAL_ACTS_PATH)
         assert len(cat) >= 1
         for entry in cat.list_entries():
-            assert entry.schema == SCHEMA_DISCRIMINATOR_V2, (
-                f"{entry.act_type_id} is not v2; this test is for v1.4-rc1 "
-                f"only. Update or split the test once v1.5-rc1 lands."
+            assert entry.schema == SCHEMA_DISCRIMINATOR_V3, (
+                f"{entry.act_type_id} reports schema={entry.schema!r}; "
+                f"expected {SCHEMA_DISCRIMINATOR_V3!r}. v1.4-rc1 entries "
+                f"should all carry the v3 schema discriminator."
             )
 
-    def test_all_real_entries_have_v3_fields_none(self) -> None:
+    def test_all_real_entries_have_v3_fields_populated(self) -> None:
         cat = load_catalogue(acts_path=REAL_ACTS_PATH)
         for entry in cat.list_entries():
-            assert entry.regulated_context_profile is None
-            assert entry.prior_receipts_profile is None
-            assert entry.reliance_context is None
-            assert entry.disclosure_profile is None
+            assert entry.regulated_context_profile is not None, (
+                f"{entry.act_type_id}: regulated_context_profile is None"
+            )
+            assert entry.prior_receipts_profile is not None, (
+                f"{entry.act_type_id}: prior_receipts_profile is None"
+            )
+            assert entry.reliance_context is not None, (
+                f"{entry.act_type_id}: reliance_context is None"
+            )
+            assert entry.disclosure_profile is not None, (
+                f"{entry.act_type_id}: disclosure_profile is None"
+            )

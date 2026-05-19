@@ -29,6 +29,30 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# These tests exercise actproof.signers.google_kms, which depends on
+# google-cloud-kms and google-crc32c. Both ship via the ``[gcp]`` extra.
+# Without them, the GoogleKMSSigner class exists only as a stub that
+# raises on instantiation. Skip the entire module rather than reporting
+# 16 failures in environments that do not install the GCP extra (a
+# common case for catalogue-only development and CI runs that do not
+# touch the signer subsystem).
+pytest.importorskip(
+    "google.cloud.kms",
+    reason=(
+        "google-cloud-kms is not installed. "
+        "Install actproof's optional GCP extra: pip install 'actproof[gcp]'. "
+        "These tests do not make real KMS calls but require the client "
+        "library to be importable."
+    ),
+)
+pytest.importorskip(
+    "google_crc32c",
+    reason=(
+        "google-crc32c is not installed (part of the [gcp] extra). "
+        "Install actproof's optional GCP extra: pip install 'actproof[gcp]'."
+    ),
+)
+
 # Conditional import: skip the whole module if google-cloud-kms is not present.
 try:
     from actproof.signers.google_kms import (

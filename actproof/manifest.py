@@ -211,10 +211,21 @@ class ManifestValidationError(ValueError):
 class CatalogueBinding:
     """Pins which catalogue entry, version, and source revision this manifest implements.
 
-    Together the five fields make the receipt independently verifiable:
+    Together the six required fields make the receipt independently verifiable:
     anyone can fetch the catalogue source at the pinned commit, locate the
     entry by ``act_type_id``, recompute the entry hash, and confirm that
     what was used matches what the receipt claims.
+
+    Two additional optional fields name the pip-installable Python package
+    that provides the catalogue bytes. They are populated automatically when
+    the catalogue is loaded from an installed ``actproof-events`` package
+    (via ``pip install actproof[events]``); they remain ``None`` when the
+    catalogue is sourced via git submodule, vendored copy, or volume mount.
+    The package fields are convenience provenance: a verifier with the
+    package name and version can ``pip install`` the exact release whose
+    bytes hash to ``entry_hash``, without having to clone the git repo
+    and check out the ``git_commit``. The cryptographic binding remains
+    ``entry_hash``; the package fields make the source easier to obtain.
 
     Attributes:
         act_type_id: The catalogue entry's act_type_id, e.g.
@@ -224,6 +235,15 @@ class CatalogueBinding:
         git_commit: 40-character git SHA-1 commit of the catalogue at issue time.
         entry_hash: SHA-256 of the entry JSON file bytes, as ``"sha256:..."``.
         schema_hash: SHA-256 of the catalogue schema JSON bytes, as ``"sha256:..."``.
+        source_package_name: Optional Python distribution name of the package
+            that provided the catalogue bytes (typically ``"actproof-events"``).
+            ``None`` when the catalogue was sourced via git, vendoring, or
+            volume mount rather than a pip install.
+        source_package_version: Optional version string of the source package
+            at load time (e.g. ``"1.4.0rc1"``). Pairs with
+            ``source_package_name`` to allow a verifier to
+            ``pip install actproof-events==<version>`` and obtain byte-exact
+            catalogue bytes. ``None`` when ``source_package_name`` is ``None``.
     """
     act_type_id: str
     entry_version: int
@@ -231,6 +251,8 @@ class CatalogueBinding:
     git_commit: str
     entry_hash: str
     schema_hash: str
+    source_package_name: Optional[str] = None
+    source_package_version: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -350,6 +372,8 @@ def build_manifest(
     issued_at: str,
     receipt_profile: str = RECEIPT_PROFILE_V1,
     batching_profile: str = BATCHING_PROFILE_SINGLE,
+    catalogue_source_package_name: Optional[str] = None,
+    catalogue_source_package_version: Optional[str] = None,
 ) -> Manifest:
     """Construct a Manifest from raw fields.
 
@@ -376,10 +400,46 @@ def build_manifest(
         issued_at: ISO 8601 UTC timestamp with ``Z`` suffix.
         receipt_profile: Receipt profile discriminator. Defaults to v1.
         batching_profile: Batching profile discriminator. Defaults to single.
+        catalogue_source_package_name: Optional pip distribution name of the
+            package that provided the catalogue bytes (typically
+            ``"actproof-events"``). Leave ``None`` when sourcing the catalogue
+            from a git submodule, vendored copy, or volume mount. Pass both
+            this and ``catalogue_source_package_version`` together, or
+            neither.
+        catalogue_source_package_version: Optional version string of the
+            source package at issue time (e.g. ``"1.4.0rc1"``).
 
     Returns:
         A fully populated, immutable ``Manifest`` instance.
+
+    Raises:
+        ManifestValidationError: If exactly one of
+            ``catalogue_source_package_name`` and
+            ``catalogue_source_package_version`` is provided. The two
+            are both-or-neither; either commit to package provenance
+            fully or omit it entirely.
     """
+    # Both-or-neither enforcement (mirrors manifest_from_dict). One-sided
+    # package provenance would silently round-trip to a different shape
+    # via manifest_to_dict, which is a correctness hazard. Reject up front.
+    if (catalogue_source_package_name is None) != (catalogue_source_package_version is None):
+        raise ManifestValidationError(
+            "catalogue_source_package_name and catalogue_source_package_version "
+            "must either both be provided or both be None. "
+            f"Got catalogue_source_package_name={catalogue_source_package_name!r}, "
+            f"catalogue_source_package_version={catalogue_source_package_version!r}."
+        )
+    if catalogue_source_package_name is not None and not isinstance(catalogue_source_package_name, str):
+        raise ManifestValidationError(
+            f"catalogue_source_package_name must be a string when present, "
+            f"got {type(catalogue_source_package_name).__name__}."
+        )
+    if catalogue_source_package_version is not None and not isinstance(catalogue_source_package_version, str):
+        raise ManifestValidationError(
+            f"catalogue_source_package_version must be a string when present, "
+            f"got {type(catalogue_source_package_version).__name__}."
+        )
+
     return Manifest(
         receipt_profile=receipt_profile,
         issued_at=issued_at,
@@ -390,6 +450,8 @@ def build_manifest(
             git_commit=catalogue_git_commit,
             entry_hash=catalogue_entry_hash,
             schema_hash=catalogue_schema_hash,
+            source_package_name=catalogue_source_package_name,
+            source_package_version=catalogue_source_package_version,
         ),
         issuer=Issuer(
             org_name=issuer_org_name,
@@ -413,23 +475,41 @@ def manifest_to_dict(m: Manifest) -> dict[str, Any]:
     The output is what gets passed to ``canonicalize()`` to produce the
     canonical bytes that are hashed and anchored.
 
+    Backwards compatibility: the optional catalogue fields
+    ``source_package_name`` and ``source_package_version`` are only
+    emitted when both are populated. When both are ``None``, they are
+    omitted entirely from the canonical output, so manifests built
+    before these fields existed produce byte-identical canonical bytes
+    (and therefore byte-identical hashes) as they did before.
+
     Args:
         m: The Manifest to serialise.
 
     Returns:
         A nested dict with all manifest fields.
     """
+    catalogue_block: dict[str, Any] = {
+        "act_type_id": m.catalogue.act_type_id,
+        "entry_version": m.catalogue.entry_version,
+        "source_uri": m.catalogue.source_uri,
+        "git_commit": m.catalogue.git_commit,
+        "entry_hash": m.catalogue.entry_hash,
+        "schema_hash": m.catalogue.schema_hash,
+    }
+    # Emit the optional package fields only when both are populated. This
+    # preserves byte-exact canonical bytes for manifests issued before
+    # these fields existed (where both are None).
+    if (
+        m.catalogue.source_package_name is not None
+        and m.catalogue.source_package_version is not None
+    ):
+        catalogue_block["source_package_name"] = m.catalogue.source_package_name
+        catalogue_block["source_package_version"] = m.catalogue.source_package_version
+
     return {
         "receipt_profile": m.receipt_profile,
         "issued_at": m.issued_at,
-        "catalogue": {
-            "act_type_id": m.catalogue.act_type_id,
-            "entry_version": m.catalogue.entry_version,
-            "source_uri": m.catalogue.source_uri,
-            "git_commit": m.catalogue.git_commit,
-            "entry_hash": m.catalogue.entry_hash,
-            "schema_hash": m.catalogue.schema_hash,
-        },
+        "catalogue": catalogue_block,
         "issuer": {
             "org_name": m.issuer.org_name,
             "authority_label": m.issuer.authority_label,
@@ -465,6 +545,20 @@ def manifest_from_dict(d: Mapping[str, Any]) -> Manifest:
     manifest as a nested dict and needs to reconstruct the typed object
     for inspection.
 
+    Backwards compatibility: the optional catalogue fields
+    ``source_package_name`` and ``source_package_version`` are read via
+    ``.get(...)`` so receipts predating these fields parse without
+    raising. Receipts that carry them populate the corresponding
+    ``CatalogueBinding`` attributes.
+
+    The two package fields are both-or-neither: a manifest that carries
+    one of them but not the other is malformed and parsing raises
+    ``ManifestValidationError``. This prevents a roundtrip discrepancy
+    where the input dict had one field, the parsed object stores it
+    silently, and re-serialisation via ``manifest_to_dict`` drops both
+    (because ``manifest_to_dict`` emits both only when both are set).
+    Either commit to package provenance fully or omit it entirely.
+
     Args:
         d: A dict matching the canonical manifest shape.
 
@@ -473,11 +567,35 @@ def manifest_from_dict(d: Mapping[str, Any]) -> Manifest:
 
     Raises:
         ManifestValidationError: If a required field is missing or has
-            the wrong type.
+            the wrong type, or if exactly one of the optional package
+            fields is present.
     """
     try:
         catalogue_dict = d["catalogue"]
         issuer_dict = d["issuer"]
+
+        # Both-or-neither enforcement for the optional package fields.
+        # Catches malformed manifests with one field set and the other
+        # absent or None, which would lose information on roundtrip.
+        source_package_name = catalogue_dict.get("source_package_name")
+        source_package_version = catalogue_dict.get("source_package_version")
+        if (source_package_name is None) != (source_package_version is None):
+            raise ManifestValidationError(
+                "catalogue.source_package_name and catalogue.source_package_version "
+                "must either both be present or both be omitted. "
+                f"Got source_package_name={source_package_name!r}, "
+                f"source_package_version={source_package_version!r}."
+            )
+        if source_package_name is not None and not isinstance(source_package_name, str):
+            raise ManifestValidationError(
+                f"catalogue.source_package_name must be a string when present, "
+                f"got {type(source_package_name).__name__}."
+            )
+        if source_package_version is not None and not isinstance(source_package_version, str):
+            raise ManifestValidationError(
+                f"catalogue.source_package_version must be a string when present, "
+                f"got {type(source_package_version).__name__}."
+            )
 
         return Manifest(
             receipt_profile=d["receipt_profile"],
@@ -489,6 +607,8 @@ def manifest_from_dict(d: Mapping[str, Any]) -> Manifest:
                 git_commit=catalogue_dict["git_commit"],
                 entry_hash=catalogue_dict["entry_hash"],
                 schema_hash=catalogue_dict["schema_hash"],
+                source_package_name=source_package_name,
+                source_package_version=source_package_version,
             ),
             issuer=Issuer(
                 org_name=issuer_dict["org_name"],

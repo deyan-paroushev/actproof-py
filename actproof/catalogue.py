@@ -32,20 +32,27 @@ declares the corresponding blocks; absent blocks remain ``None``.
 Path resolution
 ---------------
 
-The catalogue is located on disk. How the bytes get there (git submodule,
-vendored copy, volume mount, fresh clone in CI) is a deployment decision the
-library does not constrain. Resolution order:
+The catalogue is located on disk. How the bytes get there (pip-installed
+``actproof-events`` package, git submodule, vendored copy, volume mount, fresh
+clone in CI) is a deployment decision the library does not constrain.
+Resolution order:
 
 1. The ``acts_path`` argument to ``load_catalogue`` if provided.
 2. ``$ACTPROOF_CATALOGUE_PATH`` environment variable.
-3. ``./actproof-events/catalogue/acts/`` relative to the current working dir.
-4. ``./vendor/actproof-events/catalogue/acts/`` relative to the current working dir.
+3. The installed ``actproof-events`` Python package, when importable. This
+   covers ``pip install actproof[events]`` and editable installs of the
+   events repo.
+4. ``./actproof-events/catalogue/acts/`` relative to the current working dir.
+5. ``./vendor/actproof-events/catalogue/acts/`` relative to the current working dir.
 
-The schema file is located by default relative to the acts path at
-``../../spec/schemas/``. Resolution tries v3 first
-(``act_catalogue_entry.v3.json``), falls back to v2
-(``act_catalogue_entry.v2.json``). Whichever file is found is hashed into
-``Catalogue.schema_hash`` for receipt binding.
+The schema file is located relative to the acts path. Two layouts are
+tried: ``../../spec/schemas/`` (source-tree layout where ``catalogue/`` and
+``spec/`` are siblings at the repo root) and ``../../schemas/`` (installed
+package layout where the wheel bundles ``catalogue/`` and ``schemas/``
+side by side under ``actproof_events/data/``). Within each layout
+resolution tries v3 first (``act_catalogue_entry.v3.json``), falls back to
+v2 (``act_catalogue_entry.v2.json``). Whichever file is found is hashed
+into ``Catalogue.schema_hash`` for receipt binding.
 
 What gets loaded
 ----------------
@@ -200,15 +207,25 @@ _FALLBACK_ACTS_PATHS: tuple[str, ...] = (
 )
 """Filesystem locations to try if no path is given and the env var is unset."""
 
-_SCHEMA_RELATIVE_PATH_V3: tuple[str, ...] = (
-    "..", "..", "spec", "schemas", "act_catalogue_entry.v3.json",
+_SCHEMA_RELATIVE_PATHS_V3: tuple[tuple[str, ...], ...] = (
+    ("..", "..", "spec", "schemas", "act_catalogue_entry.v3.json"),
+    ("..", "..", "schemas", "act_catalogue_entry.v3.json"),
 )
-"""Default v3 schema path relative to the acts directory."""
+"""Default v3 schema paths relative to the acts directory. First tuple is the
+source-tree layout (``catalogue/acts/`` sibling of ``spec/schemas/`` under the
+repo root). Second tuple is the installed-package layout (``data/catalogue/acts/``
+sibling of ``data/schemas/`` inside the bundled wheel)."""
 
-_SCHEMA_RELATIVE_PATH_V2: tuple[str, ...] = (
-    "..", "..", "spec", "schemas", "act_catalogue_entry.v2.json",
+_SCHEMA_RELATIVE_PATHS_V2: tuple[tuple[str, ...], ...] = (
+    ("..", "..", "spec", "schemas", "act_catalogue_entry.v2.json"),
+    ("..", "..", "schemas", "act_catalogue_entry.v2.json"),
 )
-"""Default v2 schema path relative to the acts directory."""
+"""Default v2 schema paths relative to the acts directory, same two layouts."""
+
+# Backward-compatible single-tuple aliases for any external consumer that
+# imported the private names. Public API is via _resolve_schema_path().
+_SCHEMA_RELATIVE_PATH_V3: tuple[str, ...] = _SCHEMA_RELATIVE_PATHS_V3[0]
+_SCHEMA_RELATIVE_PATH_V2: tuple[str, ...] = _SCHEMA_RELATIVE_PATHS_V2[0]
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -495,12 +512,27 @@ class Catalogue:
             git working tree or the caller did not provide it.
         schema_hash: ``"sha256:..."`` of the catalogue schema file bytes.
             Empty string if the schema file could not be located.
+        source_package_name: Optional Python distribution name of the
+            package that supplied the catalogue bytes. Populated
+            automatically by :func:`load_catalogue` when the catalogue is
+            resolved from an installed ``actproof-events`` package (i.e.
+            ``pip install actproof[events]``). ``None`` when the catalogue
+            is sourced via explicit path, environment variable, or
+            filesystem fallback. Callers building manifests can pass this
+            value through to ``build_manifest(catalogue_source_package_name=...)``
+            so the resulting receipt records pip-installable provenance
+            alongside the git-based pinning.
+        source_package_version: Optional version string of the source
+            package at load time (e.g. ``"1.4.0rc1"``). Set whenever
+            ``source_package_name`` is set; ``None`` otherwise.
     """
     entries: Mapping[str, CatalogueEntry]
     source_root: str
     source_uri: Optional[str]
     git_commit: Optional[str]
     schema_hash: str
+    source_package_name: Optional[str] = None
+    source_package_version: Optional[str] = None
 
     def get(self, act_type_id: str) -> Optional[CatalogueEntry]:
         """Look up an entry by ``act_type_id``. Returns ``None`` if absent."""
@@ -530,6 +562,14 @@ class ValidationIssue:
               what's in the loaded catalogue.
             - ``SCHEMA_HASH_MISMATCH``: manifest's schema_hash differs from
               what's in the loaded catalogue.
+            - ``SOURCE_PACKAGE_NAME_MISMATCH``: manifest pins one
+              installable package name (e.g. ``"actproof-events"``) and the
+              loaded catalogue was sourced from a differently-named
+              package. Only fires when both sides have set the optional
+              field.
+            - ``SOURCE_PACKAGE_VERSION_MISMATCH``: same as above for the
+              version string. Only fires when both sides have set the
+              optional field.
             - ``MISSING_REQUIRED_CLAIM_FIELD``: a required claim field is
               absent or empty in the manifest's claim.
             - ``MISSING_REQUIRED_EVIDENCE_LABEL``: a required evidence label
@@ -549,8 +589,53 @@ class ValidationIssue:
 # PATH RESOLUTION
 # ─────────────────────────────────────────────────────────────────
 
+def _resolve_from_packaged_events() -> Optional[Path]:
+    """Try to resolve the acts path from the installed ``actproof-events`` package.
+
+    Returns the catalogue ``acts`` directory path if the package is importable
+    and exposes ``get_catalogue_path()`` (introduced in actproof-events
+    v1.4.0rc1) and that path resolves to an existing directory. Returns
+    ``None`` if the package is not installed, the function is absent (older
+    package version), or the bundled directory cannot be located on disk.
+
+    The returned value from ``get_catalogue_path()`` may be a :class:`Path`,
+    a :class:`str`, or any :class:`os.PathLike`; we coerce via ``Path(value)``
+    so future actproof-events releases that change their return type do not
+    silently break catalogue resolution.
+
+    This branch sits between the environment variable and the filesystem
+    fallbacks in :func:`_resolve_acts_path`'s priority order, so callers
+    using ``pip install actproof[events]`` get the bundled catalogue
+    automatically while explicit configuration (constructor arg or env var)
+    continues to win.
+    """
+    try:
+        import actproof_events  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    get_path = getattr(actproof_events, "get_catalogue_path", None)
+    if get_path is None:
+        return None
+    try:
+        raw = get_path()
+    except Exception:  # pragma: no cover - defensive against package bugs
+        return None
+    if raw is None:
+        return None
+    # Coerce to Path: accepts Path, str, and os.PathLike. TypeError when
+    # the return value is none of those (e.g. int) drops us back to None
+    # rather than propagating.
+    try:
+        path = Path(raw).expanduser().resolve()
+    except TypeError:
+        return None
+    if not path.is_dir():
+        return None
+    return path
+
+
 def _resolve_acts_path(explicit: Optional[Path]) -> Path:
-    """Resolve the catalogue acts path from arg, env var, or fallbacks."""
+    """Resolve the catalogue acts path from arg, env var, installed package, or fallbacks."""
     if explicit is not None:
         path = explicit.expanduser().resolve()
         if not path.is_dir():
@@ -569,6 +654,10 @@ def _resolve_acts_path(explicit: Optional[Path]) -> Path:
             )
         return path
 
+    packaged = _resolve_from_packaged_events()
+    if packaged is not None:
+        return packaged
+
     for fallback in _FALLBACK_ACTS_PATHS:
         candidate = Path(fallback).resolve()
         if candidate.is_dir():
@@ -577,6 +666,7 @@ def _resolve_acts_path(explicit: Optional[Path]) -> Path:
     raise CatalogueLoadError(
         f"Could not locate the catalogue acts directory. "
         f"Pass acts_path explicitly, set {ENV_CATALOGUE_PATH}, "
+        f"install the actproof-events package (e.g. pip install actproof[events]), "
         f"or place the catalogue at one of: {', '.join(_FALLBACK_ACTS_PATHS)}."
     )
 
@@ -585,13 +675,19 @@ def _resolve_schema_path(acts_path: Path) -> Optional[Path]:
     """Find the schema file relative to the acts directory.
 
     Tries v3 first (``act_catalogue_entry.v3.json``), falls back to v2
-    (``act_catalogue_entry.v2.json``). Returns ``None`` if neither file
-    exists. Catalogues that ship v3 entries should have the v3 schema file
-    present; catalogues that ship only v2 entries may have only the v2
-    schema file. Whichever file is found is what gets hashed into
-    ``Catalogue.schema_hash``.
+    (``act_catalogue_entry.v2.json``). For each version tries two layouts
+    in order: the source-tree layout (``../../spec/schemas/`` from acts,
+    where ``catalogue/`` and ``spec/`` are siblings at the repo root) and
+    the installed-package layout (``../../schemas/`` from acts, where the
+    wheel bundles ``catalogue/acts/`` and ``schemas/`` side by side under
+    ``actproof_events/data/``).
+
+    Returns ``None`` if no candidate file exists. Catalogues that ship v3
+    entries should have the v3 schema file present; catalogues that ship
+    only v2 entries may have only the v2 schema file. Whichever file is
+    found is what gets hashed into ``Catalogue.schema_hash``.
     """
-    for relative_parts in (_SCHEMA_RELATIVE_PATH_V3, _SCHEMA_RELATIVE_PATH_V2):
+    for relative_parts in (*_SCHEMA_RELATIVE_PATHS_V3, *_SCHEMA_RELATIVE_PATHS_V2):
         candidate = acts_path.joinpath(*relative_parts).resolve()
         if candidate.is_file():
             return candidate
@@ -805,6 +901,13 @@ def load_catalogue(
 
     Returns:
         A ``Catalogue`` with all v2 and v3 entries indexed by ``act_type_id``.
+        When the catalogue was resolved from the installed
+        ``actproof-events`` package (priority 3 in the resolution order),
+        the returned ``Catalogue`` also carries ``source_package_name`` and
+        ``source_package_version`` set to that package's distribution name
+        and version. Callers can pass these to ``build_manifest`` so
+        receipts record pip-installable provenance alongside the existing
+        git-based catalogue pinning.
 
     Raises:
         CatalogueLoadError: If the path cannot be resolved or contains
@@ -826,6 +929,41 @@ def load_catalogue(
     # If we couldn't find the schema, schema_hash stays empty. Callers
     # populating CatalogueBinding will need to provide it some other way.
 
+    # Detect pip-installable provenance: if no explicit path was given and
+    # the resolved acts path came from the actproof-events Python package,
+    # record the package name and version so receipts can pin to
+    # ``pip install actproof-events==<version>`` alongside the git pinning.
+    # This is best-effort and never raises: receipts can still be built
+    # without these fields by callers who source the catalogue via git
+    # submodule, vendoring, or volume mount.
+    source_package_name: Optional[str] = None
+    source_package_version: Optional[str] = None
+    if acts_path is None:
+        packaged = _resolve_from_packaged_events()
+        if packaged is not None and packaged == resolved_acts:
+            # Read the version from the installed distribution metadata
+            # rather than the package's __version__ attribute. The
+            # distribution metadata is the authoritative source (set at
+            # install time from pyproject.toml or the wheel metadata);
+            # the __version__ attribute is convenience that may or may
+            # not be set, and can drift from the metadata if the package
+            # forgot to update one side. importlib.metadata is in the
+            # standard library from Python 3.8 onward.
+            from importlib.metadata import PackageNotFoundError, version
+            try:
+                source_package_version = version("actproof-events")
+                source_package_name = "actproof-events"
+            except PackageNotFoundError:
+                # The package files are present on disk (we resolved
+                # the path through _resolve_from_packaged_events) but
+                # the distribution metadata is missing. This is a
+                # corner case for editable installs that did not run
+                # ``pip install -e .`` correctly, or for namespace
+                # packages without distribution metadata. Fall through
+                # silently: the catalogue still loads, callers just
+                # get no package provenance.
+                pass
+
     logger.info(
         "Loaded %d catalogue entries from %s: %s",
         len(entries), resolved_acts, sorted(entries.keys()),
@@ -837,6 +975,8 @@ def load_catalogue(
         source_uri=source_uri,
         git_commit=git_commit,
         schema_hash=schema_hash,
+        source_package_name=source_package_name,
+        source_package_version=source_package_version,
     )
 
 
@@ -889,9 +1029,19 @@ def validate_manifest(
 ) -> list[ValidationIssue]:
     """Validate a manifest's claim and evidence against its catalogue entry.
 
-    Performs seven checks (see module docstring for the full list).
-    Returns a list of issues; an empty list means the manifest is valid
-    against the loaded catalogue.
+    Performs up to nine checks. Seven always run; two additional ones
+    (SOURCE_PACKAGE_NAME_MISMATCH, SOURCE_PACKAGE_VERSION_MISMATCH) only
+    fire when both the manifest and the loaded catalogue carry the
+    optional package-provenance fields. See the ``ValidationIssue``
+    docstring for the full code list. Returns a list of issues; an
+    empty list means the manifest is valid against the loaded catalogue.
+
+    The two package-provenance checks are diagnostic. The cryptographic
+    binding between a manifest and the catalogue bytes it implements is
+    ``entry_hash`` and ``schema_hash``; those checks already cover any
+    byte-level drift. The package name and version checks give a
+    clearer error message when the operator's environment has a
+    different installed version than the issuer used at issue time.
 
     Catalogue conformance is one of several validation layers a complete
     verifier runs. The others are: ``validate_manifest_shape`` (structural
@@ -964,6 +1114,57 @@ def validate_manifest(
                     f"but loaded catalogue schema hashes to {catalogue.schema_hash!r}."
                 ),
                 field="catalogue.schema_hash",
+            )
+        )
+
+    # 4a. Source package name matches (only when both sides have set it)?
+    # The optional source_package_name and source_package_version fields
+    # are pip-installable-provenance metadata. They are NOT a substitute
+    # for the cryptographic entry_hash and schema_hash checks above; the
+    # bytes binding is still authoritative. These two checks give
+    # operators a clearer diagnostic when a mismatch occurs ("you have
+    # actproof-events 1.4.1 installed but the receipt was issued against
+    # 1.4.0rc1") than the entry_hash mismatch alone would.
+    if (
+        manifest.catalogue.source_package_name
+        and catalogue.source_package_name
+        and manifest.catalogue.source_package_name != catalogue.source_package_name
+    ):
+        issues.append(
+            ValidationIssue(
+                code="SOURCE_PACKAGE_NAME_MISMATCH",
+                message=(
+                    f"manifest pins source_package_name "
+                    f"{manifest.catalogue.source_package_name!r} but loaded "
+                    f"catalogue was sourced from {catalogue.source_package_name!r}. "
+                    f"This is package-provenance metadata, not a cryptographic "
+                    f"binding (entry_hash already covers the bytes), but indicates "
+                    f"the operator's environment differs from the issuer's."
+                ),
+                field="catalogue.source_package_name",
+            )
+        )
+
+    # 4b. Source package version matches (only when both sides have set it)?
+    if (
+        manifest.catalogue.source_package_version
+        and catalogue.source_package_version
+        and manifest.catalogue.source_package_version != catalogue.source_package_version
+    ):
+        issues.append(
+            ValidationIssue(
+                code="SOURCE_PACKAGE_VERSION_MISMATCH",
+                message=(
+                    f"manifest pins source_package_version "
+                    f"{manifest.catalogue.source_package_version!r} but loaded "
+                    f"catalogue was sourced from version "
+                    f"{catalogue.source_package_version!r}. "
+                    f"This is package-provenance metadata, not a cryptographic "
+                    f"binding (entry_hash already covers the bytes), but signals "
+                    f"that ``pip install`` with the receipt's pinned version may "
+                    f"be required to reproduce byte-for-byte."
+                ),
+                field="catalogue.source_package_version",
             )
         )
 
