@@ -16,6 +16,33 @@ release. Once 1.0.0 ships, semantic versioning will be strictly followed.
 - **v1.0.0** — API frozen.
 - **v2.0.0** — COSE_Sign1 + SCITT Transparent Statement bridge, once RFC 9943 publishes.
 
+## [0.3.1] — 2026-05-19
+
+**Packaging hotfix.** Resolves an internal contradiction in v0.3.0's
+dependency declaration that prevented installation in modern pip
+environments.
+
+### Fixed
+
+- **`cryptography` lower bound relaxed from `>=42.0` to `>=41.0`.** v0.3.0
+  declared both `tsp-client>=0.2.1,<0.3` and `cryptography>=42.0`, but
+  `tsp-client==0.2.1` (the only version in that range) transitively
+  requires `pyOpenSSL<24`, which in turn requires `cryptography<42`. The
+  two constraints could not be satisfied simultaneously by a strict pip
+  resolver, making v0.3.0 uninstallable in fresh environments. The
+  actual cryptography API surface used by
+  `actproof.signers.google_kms._extract_raw_ed25519_from_pem`
+  (`Ed25519PublicKey`, `load_pem_public_key`, `Encoding.Raw`,
+  `PublicFormat.Raw`) has been available since cryptography 2.6, so the
+  `>=42` floor was conservative rather than technical.
+
+### Notes
+
+- The upper bound `<46.0` is unchanged.
+- v0.4.0 will replace `tsp-client` with `rfc3161-client`, removing the
+  legacy `pyOpenSSL` cap entirely. The cryptography floor can then move
+  forward in step with modern releases.
+
 ## [0.3.0] — 2026-05-17
 
 **Security hardening release.** Closes a transaction-validation gap present in v0.2.0. See `SECURITY.md` for the advisory.
