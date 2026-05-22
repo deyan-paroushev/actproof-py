@@ -21,11 +21,13 @@ Entries may carry one of two schema discriminators:
   v1.4-rc1): fifteen wire-schema fields covering claim shape, evidence,
   signature policy, regulatory citation, and provenance.
 - ``"actproof.act_catalogue_entry.v3"`` (introduced in actproof-events
-  v1.5-rc1): strict additive superset of v2. Adds four optional sub-objects
-  for richer act-type semantics: ``regulated_context_profile``,
-  ``prior_receipts_profile``, ``reliance_context``, ``disclosure_profile``.
+  v1.5-rc1): strict additive superset of v2. Adds optional blocks for
+  richer act-type semantics. The blocks this loader exposes as typed
+  ``CatalogueEntry`` fields are ``regulated_context_profile``,
+  ``prior_receipts_profile``, ``reliance_context``, ``disclosure_profile``,
+  and ``claim_field_types``.
 
-Both are accepted by the loader. v2 entries leave the four v3 fields on
+Both are accepted by the loader. v2 entries leave the optional v3 fields on
 ``CatalogueEntry`` at ``None``. v3 entries populate them where the JSON
 declares the corresponding blocks; absent blocks remain ``None``.
 
@@ -422,12 +424,12 @@ class DisclosureProfile:
 @dataclass(frozen=True)
 class CatalogueEntry:
     """A single catalogue entry. Fifteen v2 wire-schema fields, two derived
-    fields, and four optional v3 sub-objects.
+    fields, and the optional v3 fields.
 
-    v2 entries populate the fifteen v2 wire-schema fields. The four v3
-    sub-object fields default to ``None`` and remain ``None`` on v2 entries.
-    v3 entries additionally populate up to four of the optional sub-objects;
-    fields not declared in JSON remain ``None``.
+    v2 entries populate the fifteen v2 wire-schema fields. The optional v3
+    fields default to ``None`` and remain ``None`` on v2 entries. v3
+    entries additionally populate the optional v3 fields wherever the JSON
+    declares the corresponding block; fields not declared remain ``None``.
 
     Attributes:
         schema: Schema discriminator. ``"actproof.act_catalogue_entry.v2"``
@@ -468,6 +470,12 @@ class CatalogueEntry:
         disclosure_profile: Optional v3 block declaring per-field disclosure
             tier and back-propagation scope. ``None`` for v2 entries and for
             v3 entries that do not declare the block.
+        claim_field_types: Optional v3 mapping from each claim field name to
+            its primitive data type (one of string, text, boolean, integer,
+            number, date, datetime, email, string_list). ``None`` for v2
+            entries and for v3 entries that do not declare the block. A
+            consumer reading a claim field absent from the map should treat
+            it as ``string``.
     """
     schema: str
     act_type_id: str
@@ -495,6 +503,7 @@ class CatalogueEntry:
     prior_receipts_profile: Optional[PriorReceiptsProfile] = None
     reliance_context: Optional[RelianceContext] = None
     disclosure_profile: Optional[DisclosureProfile] = None
+    claim_field_types: Optional[Mapping[str, str]] = None
 
 
 @dataclass(frozen=True)
@@ -694,6 +703,74 @@ def _resolve_schema_path(acts_path: Path) -> Optional[Path]:
     return None
 
 
+def _resolve_schema_paths(acts_path: Path) -> dict[str, Path]:
+    """Resolve the schema file for each entry schema version.
+
+    Returns a mapping from schema discriminator to the schema file found
+    on disk, for whichever of the v2 and v3 schema files are present next
+    to the catalogue. Used to build per-version validators for load-time
+    schema validation.
+
+    This is distinct from :func:`_resolve_schema_path`, which returns the
+    single file hashed into ``Catalogue.schema_hash``. Both consult the
+    same source-tree and installed-package layouts.
+    """
+    resolved: dict[str, Path] = {}
+    for discriminator, relative_sets in (
+        (SCHEMA_DISCRIMINATOR_V3, _SCHEMA_RELATIVE_PATHS_V3),
+        (SCHEMA_DISCRIMINATOR_V2, _SCHEMA_RELATIVE_PATHS_V2),
+    ):
+        for relative_parts in relative_sets:
+            candidate = acts_path.joinpath(*relative_parts).resolve()
+            if candidate.is_file():
+                resolved[discriminator] = candidate
+                break
+    return resolved
+
+
+def _build_schema_validators(
+    schema_paths: Mapping[str, Path],
+) -> dict[str, object]:
+    """Build a JSON Schema validator for each resolved schema file.
+
+    The ``jsonschema`` package is imported here, not at module import time,
+    so that importing :mod:`actproof.catalogue` never requires
+    ``jsonschema``. The package is needed only when ``load_catalogue`` runs
+    with ``validate_schema=True`` (the default). A clear, actionable error
+    is raised if the package is absent.
+
+    Returns a mapping from schema discriminator to a
+    ``jsonschema.Draft202012Validator``. Each schema file is itself checked
+    against the 2020-12 metaschema before use.
+
+    Raises:
+        CatalogueLoadError: If ``jsonschema`` is not installed, or a schema
+            file cannot be read, parsed, or is not a valid JSON Schema.
+    """
+    try:
+        from jsonschema.exceptions import SchemaError
+        from jsonschema.validators import Draft202012Validator
+    except ImportError as exc:
+        raise CatalogueLoadError(
+            "Schema validation was requested (validate_schema=True) but the "
+            "'jsonschema' package is not installed. Install it with "
+            "'pip install jsonschema', or call "
+            "load_catalogue(validate_schema=False) to skip validation."
+        ) from exc
+
+    validators: dict[str, object] = {}
+    for discriminator, schema_path in schema_paths.items():
+        try:
+            schema = json.loads(schema_path.read_text(encoding="utf-8"))
+            Draft202012Validator.check_schema(schema)
+        except (OSError, json.JSONDecodeError, SchemaError) as exc:
+            raise CatalogueLoadError(
+                f"Cannot load catalogue schema {schema_path}: {exc}"
+            ) from exc
+        validators[discriminator] = Draft202012Validator(schema)
+    return validators
+
+
 # ─────────────────────────────────────────────────────────────────
 # PARSING
 # ─────────────────────────────────────────────────────────────────
@@ -702,10 +779,10 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
     """Build a ``CatalogueEntry`` from a parsed JSON dict.
 
     Accepts entries with either the v2 or v3 schema discriminator. v3 entries
-    additionally parse the four optional sub-objects (``regulated_context_profile``,
-    ``prior_receipts_profile``, ``reliance_context``, ``disclosure_profile``)
-    into their respective dataclasses where the corresponding JSON blocks
-    are present; absent blocks leave the field at ``None``. v2 entries
+    additionally parse the optional v3 blocks (``regulated_context_profile``,
+    ``prior_receipts_profile``, ``reliance_context``, ``disclosure_profile``,
+    and ``claim_field_types``) where the corresponding JSON blocks are
+    present; absent blocks leave the field at ``None``. v2 entries
     never populate the v3 fields, even if the JSON happens to carry them
     (this matches the loader's general tolerance for extra dict keys; the
     v2 JSON schema file enforces strict ``additionalProperties: false`` for
@@ -750,6 +827,7 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
         prior_receipts_profile: Optional[PriorReceiptsProfile] = None
         reliance_context: Optional[RelianceContext] = None
         disclosure_profile: Optional[DisclosureProfile] = None
+        claim_field_types: Optional[Mapping[str, str]] = None
 
         if schema_value == SCHEMA_DISCRIMINATOR_V3:
             rcp_data = data.get("regulated_context_profile")
@@ -792,6 +870,10 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
                     back_propagation_scope=back_prop,
                 )
 
+            cft_data = data.get("claim_field_types")
+            if cft_data is not None:
+                claim_field_types = dict(cft_data)
+
         return CatalogueEntry(
             schema=schema_value,
             act_type_id=data["act_type_id"],
@@ -814,6 +896,7 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
             prior_receipts_profile=prior_receipts_profile,
             reliance_context=reliance_context,
             disclosure_profile=disclosure_profile,
+            claim_field_types=claim_field_types,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise CatalogueLoadError(
@@ -821,7 +904,11 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
         ) from exc
 
 
-def _scan_acts_directory(acts_path: Path) -> dict[str, CatalogueEntry]:
+def _scan_acts_directory(
+    acts_path: Path,
+    *,
+    schema_validators: Optional[Mapping[str, object]] = None,
+) -> dict[str, CatalogueEntry]:
     """Walk the acts directory and load all v2 and v3 entries.
 
     Skipped:
@@ -830,8 +917,18 @@ def _scan_acts_directory(acts_path: Path) -> dict[str, CatalogueEntry]:
         - Files whose top-level ``schema`` is not in ``SCHEMA_DISCRIMINATORS``
           (silently, as a permissive allowance for other JSON files in tree).
 
+    Args:
+        acts_path: The ``catalogue/acts/`` directory to walk.
+        schema_validators: Optional mapping from schema discriminator to a
+            JSON Schema validator. When provided, every recognised entry is
+            validated against the validator for its discriminator before it
+            is parsed, and a non-conforming entry stops the load. When
+            ``None``, no schema validation is performed.
+
     Raises:
-        CatalogueLoadError: If two entries share an ``act_type_id``.
+        CatalogueLoadError: If two entries share an ``act_type_id``, or if
+            schema validation is enabled and an entry does not conform to
+            its declared JSON Schema.
     """
     entries: dict[str, CatalogueEntry] = {}
 
@@ -856,6 +953,30 @@ def _scan_acts_directory(acts_path: Path) -> dict[str, CatalogueEntry]:
         if not isinstance(data, dict) or data.get("schema") not in SCHEMA_DISCRIMINATORS:
             # Could be a schema file, a README in JSON, etc. Not an error.
             continue
+
+        if schema_validators is not None:
+            validator = schema_validators.get(data["schema"])
+            if validator is None:
+                raise CatalogueLoadError(
+                    f"Schema validation is enabled but no schema file was "
+                    f"found for {data['schema']!r}, needed to validate "
+                    f"{json_path}. Ship the matching schema file with the "
+                    f"catalogue, or load with validate_schema=False."
+                )
+            schema_errors = sorted(
+                validator.iter_errors(data),
+                key=lambda err: list(err.path),
+            )
+            if schema_errors:
+                detail = "; ".join(
+                    f"{'/'.join(str(p) for p in err.path) or '(root)'}: "
+                    f"{err.message}"
+                    for err in schema_errors
+                )
+                raise CatalogueLoadError(
+                    f"Catalogue entry {json_path} does not conform to the "
+                    f"{data['schema']} JSON Schema: {detail}"
+                )
 
         entry_hash = "sha256:" + hashlib.sha256(raw_bytes).hexdigest()
         entry = _parse_entry(data, str(json_path), entry_hash)
@@ -882,6 +1003,7 @@ def load_catalogue(
     schema_path: Optional[Path] = None,
     source_uri: Optional[str] = None,
     git_commit: Optional[str] = None,
+    validate_schema: bool = True,
 ) -> Catalogue:
     """Load the catalogue from disk.
 
@@ -898,6 +1020,15 @@ def load_catalogue(
         git_commit: Optional 40-character git SHA-1 of the catalogue at
             load time. Stored on the resulting ``Catalogue`` for receipt
             provenance.
+        validate_schema: When ``True`` (the default), every catalogue entry
+            is validated against its declared JSON Schema at load time, and
+            a non-conforming entry stops the load with ``CatalogueLoadError``.
+            This makes the reference loader refuse to surface non-conforming
+            entries, the behaviour conforming loaders in other languages are
+            expected to match. Requires the ``jsonschema`` package and the
+            schema files to be present next to the catalogue. Pass ``False``
+            to skip validation, for development or for environments without
+            the schema files or ``jsonschema``.
 
     Returns:
         A ``Catalogue`` with all v2 and v3 entries indexed by ``act_type_id``.
@@ -911,10 +1042,34 @@ def load_catalogue(
 
     Raises:
         CatalogueLoadError: If the path cannot be resolved or contains
-            structural problems (duplicate act_type_ids, malformed entries).
+            structural problems (duplicate act_type_ids, malformed entries);
+            if ``validate_schema`` is ``True`` and an entry does not conform
+            to its JSON Schema; or if ``validate_schema`` is ``True`` and the
+            schema files or the ``jsonschema`` package are unavailable.
     """
     resolved_acts = _resolve_acts_path(acts_path)
-    entries = _scan_acts_directory(resolved_acts)
+
+    # Load-time schema validation. On by default: an entry that does not
+    # conform to its declared JSON Schema stops the load. This makes the
+    # reference loader refuse to surface non-conforming entries, which is
+    # the behaviour conforming loaders are expected to match. Pass
+    # validate_schema=False to skip it.
+    schema_validators: Optional[Mapping[str, object]] = None
+    if validate_schema:
+        validation_schema_paths = _resolve_schema_paths(resolved_acts)
+        if not validation_schema_paths:
+            raise CatalogueLoadError(
+                f"validate_schema is True but no catalogue entry schema file "
+                f"was found next to {resolved_acts}. Expected "
+                f"act_catalogue_entry.v3.json (and/or the v2 file) under the "
+                f"catalogue's spec/schemas directory. Ship the schema with "
+                f"the catalogue, or call load_catalogue(validate_schema=False)."
+            )
+        schema_validators = _build_schema_validators(validation_schema_paths)
+
+    entries = _scan_acts_directory(
+        resolved_acts, schema_validators=schema_validators
+    )
 
     # Compute schema_hash if we can find the schema file.
     schema_hash = ""
