@@ -16,6 +16,38 @@ release. Once 1.0.0 ships, semantic versioning will be strictly followed.
 - **v1.0.0** — API frozen.
 - **v2.0.0** — COSE_Sign1 + SCITT Transparent Statement bridge, once RFC 9943 publishes.
 
+## [0.3.4] — 2026-05-25
+
+**On-chain note in three encodings.** A receipt's anchor record now carries
+the exact ARC-2 transaction note as written to the ledger, rendered in
+UTF-8, hex, and base64. A receipt can be checked against a block explorer,
+an indexer API, or a byte-level tool without re-deriving the note from the
+manifest hash.
+
+### Added
+
+- **`OnChainNote`** — a frozen dataclass exported from the package, with
+  `utf8`, `hex`, and `base64` fields. **`on_chain_note_from_bytes`** is the
+  single builder that derives all three encodings from one note byte string.
+  Hex is lowercase without a `0x` prefix; base64 is standard-padded.
+- **`AnchorRecord.on_chain_note`** — a new optional field. `anchor_manifest`
+  populates it from the note bytes in every anchor mode. When a receipt is
+  read without the field, `__post_init__` reconstructs it losslessly from
+  `note_payload_b64` and the ARC-2 prefix, so receipts written by earlier
+  releases continue to read and verify unchanged.
+- Eight tests covering the three encodings, the builder, the reconstruction
+  path, and round-tripping through `receipt_to_dict` and `receipt_from_dict`.
+
+### Notes
+
+- Backward compatible. No breaking changes and no dependency changes.
+  Receipts written by 0.3.3 and earlier gain the reconstructed
+  `anchor.on_chain_note` block on read; receipts written by 0.3.4 carry it
+  as stored.
+- `note_payload_b64`, the prefix-stripped payload, is retained alongside the
+  new field. A decision on its long-term status is left to the receipt
+  format specification.
+
 ## [0.3.2] — 2026-05-19
 
 **License switch from MIT to Apache-2.0.** Forward-looking positioning of

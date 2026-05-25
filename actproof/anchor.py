@@ -95,6 +95,7 @@ from actproof.receipt import (
     ARC2_FORMAT_VERSION_JSON,
     ARC2_NOTE_FORMAT,
     AnchorRecord,
+    on_chain_note_from_bytes,
 )
 from actproof.signers.interface import ALGORAND_MIN_FEE_MICROALGOS
 
@@ -518,6 +519,9 @@ def anchor_manifest(
     # commitment, the transaction is the carrier.
     note_bytes = build_note_bytes(manifest_hash, batching_profile)
     note_payload_b64 = base64.b64encode(note_bytes[len(_ARC2_PREFIX):]).decode("ascii")
+    # The full on-chain note in three encodings, all from this one
+    # note_bytes value, so the three encodings cannot drift apart.
+    on_chain_note = on_chain_note_from_bytes(note_bytes)
 
     network = _network_for_mode(mode)
 
@@ -536,6 +540,7 @@ def anchor_manifest(
             note_dapp_name=ARC2_DAPP_NAME,
             note_format_version=ARC2_FORMAT_VERSION_JSON,
             note_payload_b64=note_payload_b64,
+            on_chain_note=on_chain_note,
         )
 
     # DEMO and PRODUCTION: real submission.
@@ -600,4 +605,5 @@ def anchor_manifest(
         note_dapp_name=ARC2_DAPP_NAME,
         note_format_version=ARC2_FORMAT_VERSION_JSON,
         note_payload_b64=note_payload_b64,
+        on_chain_note=on_chain_note,
     )

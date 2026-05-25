@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "actproof"
-version = "0.3.3"
+version = "0.3.4"
 description = "Verifiable receipts of regulated acts. Canonical JSON (RFC 8785), RFC 3161 trusted timestamps, Algorand ARC-2 anchoring, independent verification."
 readme = "README.md"
 requires-python = ">=3.10"

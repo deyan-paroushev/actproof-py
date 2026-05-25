@@ -44,8 +44,9 @@ A verifier holding a receipt JSON file performs:
    ``catalogue_git_commit`` (the verifier fetches the catalogue at that
    commit).
 4. Look up ``receipt.anchor.txid`` on ``receipt.anchor.network``. Fetch
-   the transaction's note bytes. Strip the ``actproof:j`` ARC-2 prefix.
-   Compare to the base64-decoded ``receipt.anchor.note_payload_b64``.
+   the transaction's note bytes. Compare them directly to
+   ``receipt.anchor.on_chain_note``, which carries the full ARC-2 note,
+   prefix included, in three encodings (utf8, hex, base64).
 5. Verify ``receipt.trusted_timestamp.token_b64`` is a valid RFC 3161
    token issued by the named TSA, whose imprint equals
    ``receipt.manifest_hash``.
@@ -97,6 +98,7 @@ Exceptions
 
 from __future__ import annotations
 
+import base64
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -113,6 +115,8 @@ from actproof.manifest import (
 
 __all__ = [
     "AnchorRecord",
+    "OnChainNote",
+    "on_chain_note_from_bytes",
     "TimestampToken",
     "Receipt",
     "PlaintextRecipient",
@@ -176,6 +180,54 @@ class ReceiptError(ValueError):
 # ─────────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
+class OnChainNote:
+    """The exact on-chain ARC-2 note, in three encodings of one byte string.
+
+    All three fields encode the SAME bytes: the full transaction note as it
+    sits on the ledger, ARC-2 prefix included
+    (``actproof:j{"h":...,"t":...,"v":1}``). They are not three values and
+    not three hashes. They are three views of one note, carried so a reviewer
+    can match the receipt against whatever form a block explorer, an indexer
+    API, or a forensic hex view happens to present.
+
+    Attributes:
+        utf8: The note decoded as UTF-8 text. The human-readable form, the
+            same string a block explorer shows in its note field.
+        hex: Lowercase hex of the note bytes, no ``0x`` prefix. The form for
+            byte-for-byte comparison when a UI may have altered whitespace,
+            escaping, or Unicode display.
+        base64: Standard base64 (with padding) of the note bytes. The form
+            many indexer and algod APIs return binary note data in.
+    """
+    utf8: str
+    hex: str
+    base64: str
+
+
+def on_chain_note_from_bytes(note_bytes: bytes) -> OnChainNote:
+    """Encode one note byte string into the three receipt encodings.
+
+    This is the single derivation point for the three encodings. The caller
+    passes the exact note bytes that were (or will be) placed on-chain, and
+    every encoding is computed from that one value here, so the three can
+    never drift apart.
+
+    Args:
+        note_bytes: The full ARC-2 note bytes, prefix included, exactly as
+            carried in the Algorand transaction ``note`` field.
+
+    Returns:
+        An ``OnChainNote`` carrying the utf8, hex, and base64 encodings of
+        ``note_bytes``.
+    """
+    return OnChainNote(
+        utf8=note_bytes.decode("utf-8"),
+        hex=note_bytes.hex(),
+        base64=base64.b64encode(note_bytes).decode("ascii"),
+    )
+
+
+@dataclass(frozen=True)
 class AnchorRecord:
     """The on-chain anchor commitment for one manifest.
 
@@ -199,9 +251,17 @@ class AnchorRecord:
             disclosed mode) in v1.
         note_payload_b64: Base64 (standard, with padding) encoding of the
             note payload bytes - the part AFTER the ARC-2 prefix
-            ``"actproof:j"``. Storing this lets a verifier reconstruct the
-            full on-chain note for byte-comparison without re-deriving from
-            the manifest hash.
+            ``"actproof:j"``. The full prefixed note, ready-encoded, is also
+            available in ``on_chain_note``.
+        on_chain_note: The full on-chain ARC-2 note, prefix included, in
+            three encodings (utf8, hex, base64). This is what a reviewer
+            compares against a block explorer: ``note_payload_b64`` carries
+            only the payload after the prefix, so it does not match the note
+            an explorer shows, whereas ``on_chain_note`` carries the note
+            exactly as the ledger holds it. Derived from the note bytes at
+            anchor time. When a receipt that predates this field is read, it
+            is reconstructed from ``note_payload_b64`` and the ARC-2 prefix,
+            which is lossless.
     """
     network: str
     txid: str
@@ -211,6 +271,27 @@ class AnchorRecord:
     note_dapp_name: str
     note_format_version: str
     note_payload_b64: str
+    on_chain_note: Optional[OnChainNote] = None
+
+    def __post_init__(self) -> None:
+        """Reconstruct ``on_chain_note`` when the caller did not supply it.
+
+        ``on_chain_note`` is a derived field. ``anchor_manifest`` supplies it
+        directly from the note bytes it builds. Older receipts predate the
+        field, and some call sites build the record from the structured
+        fields only; in those cases the full note is rebuilt here from
+        ``note_payload_b64`` and the ARC-2 prefix. The payload base64 plus
+        the prefix is exactly the note, so the reconstruction is lossless
+        and cannot diverge from the note ``build_note_bytes`` produced.
+        """
+        if self.on_chain_note is None:
+            prefix = f"{self.note_dapp_name}:{self.note_format_version}"
+            note_bytes = prefix.encode("utf-8") + base64.b64decode(
+                self.note_payload_b64
+            )
+            object.__setattr__(
+                self, "on_chain_note", on_chain_note_from_bytes(note_bytes)
+            )
 
 
 @dataclass(frozen=True)
@@ -417,6 +498,9 @@ def build_issuer_evidence(
 # ─────────────────────────────────────────────────────────────────
 
 def _anchor_to_dict(a: AnchorRecord) -> dict[str, Any]:
+    # on_chain_note is always populated: __post_init__ derives it when a
+    # caller does not pass one, so it is never None on a constructed record.
+    assert a.on_chain_note is not None
     return {
         "network": a.network,
         "txid": a.txid,
@@ -426,11 +510,29 @@ def _anchor_to_dict(a: AnchorRecord) -> dict[str, Any]:
         "note_dapp_name": a.note_dapp_name,
         "note_format_version": a.note_format_version,
         "note_payload_b64": a.note_payload_b64,
+        "on_chain_note": {
+            "utf8": a.on_chain_note.utf8,
+            "hex": a.on_chain_note.hex,
+            "base64": a.on_chain_note.base64,
+        },
     }
 
 
 def _anchor_from_dict(d: Mapping[str, Any]) -> AnchorRecord:
     try:
+        # on_chain_note is optional in the JSON. Receipts written before the
+        # field existed omit it; AnchorRecord.__post_init__ then reconstructs
+        # it from note_payload_b64 when None is passed here.
+        raw_note = d.get("on_chain_note")
+        on_chain_note = (
+            OnChainNote(
+                utf8=raw_note["utf8"],
+                hex=raw_note["hex"],
+                base64=raw_note["base64"],
+            )
+            if raw_note is not None
+            else None
+        )
         return AnchorRecord(
             network=d["network"],
             txid=d["txid"],
@@ -440,8 +542,9 @@ def _anchor_from_dict(d: Mapping[str, Any]) -> AnchorRecord:
             note_dapp_name=d["note_dapp_name"],
             note_format_version=d["note_format_version"],
             note_payload_b64=d["note_payload_b64"],
+            on_chain_note=on_chain_note,
         )
-    except (KeyError, TypeError, AttributeError) as exc:
+    except (KeyError, TypeError, AttributeError, ValueError) as exc:
         raise ReceiptError(f"Cannot parse anchor record: {exc}") from exc
 
 

@@ -48,6 +48,7 @@ from actproof.receipt import (
     ARC2_NOTE_FORMAT,
     AnchorRecord,
     IssuerEvidence,
+    OnChainNote,
     PlaintextRecipient,
     Receipt,
     ReceiptError,
@@ -56,6 +57,7 @@ from actproof.receipt import (
     build_receipt,
     issuer_evidence_from_dict,
     issuer_evidence_to_dict,
+    on_chain_note_from_bytes,
     read_issuer_evidence,
     read_receipt,
     receipt_from_dict,
@@ -360,11 +362,11 @@ class TestAnchorSerialisation:
     ) -> None:
         d = receipt_to_dict(valid_receipt)
         anchor_dict = d["anchor"]
-        # All 8 fields present.
+        # All 9 fields present.
         expected_keys = {
             "network", "txid", "block_round", "confirmed_at",
             "note_format", "note_dapp_name", "note_format_version",
-            "note_payload_b64",
+            "note_payload_b64", "on_chain_note",
         }
         assert set(anchor_dict.keys()) == expected_keys
 
@@ -726,3 +728,89 @@ class TestReceiptEvidenceLinkage:
             p.email_hash for p in valid_issuer_evidence.plaintext_recipients
         }
         assert evidence_email_hashes.issubset(manifest_email_hashes)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Group 12: on-chain note encodings (utf8 / hex / base64)
+# ─────────────────────────────────────────────────────────────────
+
+class TestOnChainNoteEncodings:
+    """The three encodings are three views of one note byte string.
+
+    They must decode to identical bytes, carry the full ARC-2 prefix, be
+    reconstructed when an older receipt omits them, and survive a
+    to_dict/from_dict roundtrip.
+    """
+
+    # A realistic full note: the ARC-2 prefix plus a canonical h/t/v payload.
+    _NOTE_BYTES = (
+        b'actproof:j{"h":"'
+        + b"3f40a9e5f6666c6f3ddbb061e5df57e09db1659d9d904122cb77c15a7876f702"
+        + b'","t":"single_attestation_anchor_v1","v":1}'
+    )
+
+    def test_encodings_decode_to_the_same_bytes(self) -> None:
+        note = on_chain_note_from_bytes(self._NOTE_BYTES)
+        assert isinstance(note, OnChainNote)
+        # One value, three encodings: all three decode back to the note.
+        assert note.utf8.encode("utf-8") == self._NOTE_BYTES
+        assert bytes.fromhex(note.hex) == self._NOTE_BYTES
+        assert base64.b64decode(note.base64) == self._NOTE_BYTES
+
+    def test_utf8_carries_the_full_arc2_prefix(self) -> None:
+        note = on_chain_note_from_bytes(self._NOTE_BYTES)
+        assert note.utf8.startswith("actproof:j")
+
+    def test_hex_is_lowercase_without_0x_prefix(self) -> None:
+        note = on_chain_note_from_bytes(self._NOTE_BYTES)
+        assert not note.hex.startswith("0x")
+        assert note.hex == note.hex.lower()
+
+    def test_on_chain_note_is_frozen(self) -> None:
+        note = on_chain_note_from_bytes(self._NOTE_BYTES)
+        with pytest.raises(FrozenInstanceError):
+            note.utf8 = "other"  # type: ignore[misc]
+
+    def test_anchor_reconstructs_note_when_json_omits_it(
+        self, valid_receipt: Receipt
+    ) -> None:
+        # Simulate a receipt written before on_chain_note existed: it carries
+        # note_payload_b64 (the prefix-stripped payload) but no on_chain_note.
+        d = receipt_to_dict(valid_receipt)
+        del d["anchor"]["on_chain_note"]
+        r = receipt_from_dict(d)
+        note = r.anchor.on_chain_note
+        # The full note is reconstructed from note_payload_b64 + the prefix.
+        assert note is not None
+        payload = base64.b64decode(r.anchor.note_payload_b64)
+        expected = (
+            f"{r.anchor.note_dapp_name}:{r.anchor.note_format_version}"
+        ).encode("utf-8") + payload
+        assert note.utf8.encode("utf-8") == expected
+        assert note.utf8.startswith("actproof:j")
+        # The legacy payload field still lacks the prefix. That mismatch
+        # against a block explorer is exactly what on_chain_note closes.
+        assert not payload.startswith(b"actproof:j")
+
+    def test_on_chain_note_survives_receipt_roundtrip(
+        self, valid_receipt: Receipt
+    ) -> None:
+        d = receipt_to_dict(valid_receipt)
+        assert "on_chain_note" in d["anchor"]
+        r2 = receipt_from_dict(d)
+        note = r2.anchor.on_chain_note
+        assert note is not None
+        # Still one consistent value in three encodings after the roundtrip.
+        assert note.utf8.encode("utf-8") == bytes.fromhex(note.hex)
+        assert base64.b64decode(note.base64) == bytes.fromhex(note.hex)
+
+    def test_bad_payload_base64_raises_receipt_error(
+        self, valid_receipt: Receipt
+    ) -> None:
+        # A receipt with no on_chain_note and an unparseable note_payload_b64
+        # should fail cleanly as a ReceiptError, not a raw binascii error.
+        d = receipt_to_dict(valid_receipt)
+        del d["anchor"]["on_chain_note"]
+        d["anchor"]["note_payload_b64"] = "not!valid!base64!"
+        with pytest.raises(ReceiptError):
+            receipt_from_dict(d)

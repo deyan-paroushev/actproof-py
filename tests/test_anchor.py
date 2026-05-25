@@ -332,6 +332,23 @@ class TestDraftMode:
         assert result.note_dapp_name == ARC2_DAPP_NAME
         assert result.note_format_version == ARC2_FORMAT_VERSION_JSON
 
+    def test_draft_on_chain_note_is_the_full_prefixed_note(self) -> None:
+        signer = _FakeSigner()
+        result = anchor_manifest(_VALID_HASH, signer=signer, mode=AnchorMode.DRAFT)
+        note = result.on_chain_note
+        assert note is not None
+        # All three encodings come from the one build_note_bytes value and
+        # decode back to the exact full note, ARC-2 prefix included.
+        expected = build_note_bytes(_VALID_HASH)
+        assert note.utf8.encode("utf-8") == expected
+        assert bytes.fromhex(note.hex) == expected
+        assert base64.b64decode(note.base64) == expected
+        # The full note carries the prefix; note_payload_b64 does not.
+        assert note.utf8.startswith("actproof:j")
+        assert not base64.b64decode(result.note_payload_b64).startswith(
+            b"actproof:j"
+        )
+
 
 # ─────────────────────────────────────────────────────────────────
 # Group 7: Signer Protocol satisfaction
