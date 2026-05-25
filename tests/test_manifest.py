@@ -846,3 +846,184 @@ class TestIntegrationWithCanonical:
         parsed = json.loads(canonical.decode("utf-8"))
         reconstructed = manifest_from_dict(parsed)
         assert hash_manifest(reconstructed) == hash_manifest(valid_manifest)
+
+
+# ─────────────────────────────────────────────────────────────────
+# Group 12: Catalogue-release provenance fields
+# ─────────────────────────────────────────────────────────────────
+
+class TestCatalogueReleaseProvenance:
+    """The four catalogue-release fields on CatalogueBinding: spec_version,
+    catalogue_release_digest, pypi_file_sha256, computed_by.
+
+    They stamp the catalogue release a manifest was built from. Each is an
+    independent optional. manifest_to_dict omits an unset field entirely,
+    so a manifest issued before these fields existed canonicalises, and
+    hashes, byte-for-byte as it did before.
+    """
+
+    def _build(self, **overrides):
+        kwargs = dict(
+            act_type_id="op:test.v1",
+            catalogue_entry_version=1,
+            catalogue_source_uri="https://example.com/catalogue",
+            catalogue_git_commit="0" * 40,
+            catalogue_entry_hash="sha256:" + "a" * 64,
+            catalogue_schema_hash="sha256:" + "b" * 64,
+            issuer_org_name="Test Corp",
+            issuer_authority_label="Operator",
+            title="Test commitment",
+            claim={"field": "value"},
+            evidence=[],
+            recipients=[],
+            issued_at="2026-05-14T12:00:00Z",
+        )
+        kwargs.update(overrides)
+        return build_manifest(**kwargs)
+
+    def _with_catalogue(self, valid_manifest: Manifest, **catalogue_fields) -> Manifest:
+        from dataclasses import replace
+        return replace(
+            valid_manifest,
+            catalogue=replace(valid_manifest.catalogue, **catalogue_fields),
+        )
+
+    # -- dataclass --------------------------------------------------
+
+    def test_release_fields_default_none(self) -> None:
+        cb = CatalogueBinding(
+            act_type_id="op:test.v1",
+            entry_version=1,
+            source_uri="u",
+            git_commit="0" * 40,
+            entry_hash="sha256:" + "a" * 64,
+            schema_hash="sha256:" + "b" * 64,
+        )
+        assert cb.spec_version is None
+        assert cb.catalogue_release_digest is None
+        assert cb.pypi_file_sha256 is None
+        assert cb.computed_by is None
+
+    def test_release_fields_accepted(self) -> None:
+        cb = CatalogueBinding(
+            act_type_id="op:test.v1",
+            entry_version=1,
+            source_uri="u",
+            git_commit="0" * 40,
+            entry_hash="sha256:" + "a" * 64,
+            schema_hash="sha256:" + "b" * 64,
+            spec_version="1.5-rc1",
+            catalogue_release_digest="sha256:" + "f" * 64,
+            pypi_file_sha256="sha256:" + "e" * 64,
+            computed_by="actproof-py 0.3.4",
+        )
+        assert cb.spec_version == "1.5-rc1"
+        assert cb.catalogue_release_digest == "sha256:" + "f" * 64
+        assert cb.pypi_file_sha256 == "sha256:" + "e" * 64
+        assert cb.computed_by == "actproof-py 0.3.4"
+
+    # -- build_manifest ---------------------------------------------
+
+    def test_build_manifest_populates_release_fields(self) -> None:
+        m = self._build(
+            catalogue_spec_version="1.5-rc1",
+            catalogue_release_digest="sha256:" + "f" * 64,
+            catalogue_pypi_file_sha256="sha256:" + "e" * 64,
+        )
+        assert m.catalogue.spec_version == "1.5-rc1"
+        assert m.catalogue.catalogue_release_digest == "sha256:" + "f" * 64
+        assert m.catalogue.pypi_file_sha256 == "sha256:" + "e" * 64
+
+    def test_build_manifest_sets_computed_by_automatically(self) -> None:
+        import actproof
+        m = self._build()
+        assert m.catalogue.computed_by == f"actproof-py {actproof.__version__}"
+
+    def test_build_manifest_rejects_non_string_release_field(self) -> None:
+        with pytest.raises(ManifestValidationError, match="catalogue_spec_version"):
+            self._build(catalogue_spec_version=123)
+
+    # -- manifest_to_dict -------------------------------------------
+
+    def test_to_dict_omits_release_fields_when_none(
+        self, valid_manifest: Manifest
+    ) -> None:
+        # valid_manifest carries no optional catalogue fields at all.
+        catalogue = manifest_to_dict(valid_manifest)["catalogue"]
+        assert set(catalogue.keys()) == {
+            "act_type_id", "entry_version", "source_uri",
+            "git_commit", "entry_hash", "schema_hash",
+        }
+
+    def test_to_dict_emits_release_fields_when_set(
+        self, valid_manifest: Manifest
+    ) -> None:
+        m = self._with_catalogue(
+            valid_manifest,
+            spec_version="1.5-rc1",
+            catalogue_release_digest="sha256:" + "f" * 64,
+            pypi_file_sha256="sha256:" + "e" * 64,
+            computed_by="actproof-py 0.3.4",
+        )
+        catalogue = manifest_to_dict(m)["catalogue"]
+        assert catalogue["spec_version"] == "1.5-rc1"
+        assert catalogue["catalogue_release_digest"] == "sha256:" + "f" * 64
+        assert catalogue["pypi_file_sha256"] == "sha256:" + "e" * 64
+        assert catalogue["computed_by"] == "actproof-py 0.3.4"
+
+    def test_to_dict_emits_release_fields_independently(
+        self, valid_manifest: Manifest
+    ) -> None:
+        # Only spec_version is set; the other three stay omitted.
+        m = self._with_catalogue(valid_manifest, spec_version="1.5-rc1")
+        catalogue = manifest_to_dict(m)["catalogue"]
+        assert catalogue["spec_version"] == "1.5-rc1"
+        assert "catalogue_release_digest" not in catalogue
+        assert "pypi_file_sha256" not in catalogue
+        assert "computed_by" not in catalogue
+
+    # -- round trip -------------------------------------------------
+
+    def test_roundtrip_preserves_release_fields(
+        self, valid_manifest: Manifest
+    ) -> None:
+        m = self._with_catalogue(
+            valid_manifest,
+            spec_version="1.5-rc1",
+            catalogue_release_digest="sha256:" + "f" * 64,
+            pypi_file_sha256="sha256:" + "e" * 64,
+            computed_by="actproof-py 0.3.4",
+        )
+        reconstructed = manifest_from_dict(manifest_to_dict(m))
+        assert reconstructed == m
+
+    def test_from_dict_rejects_non_string_release_field(
+        self, valid_manifest: Manifest
+    ) -> None:
+        d = manifest_to_dict(valid_manifest)
+        d["catalogue"]["spec_version"] = 123  # not a string
+        with pytest.raises(ManifestValidationError, match="catalogue.spec_version"):
+            manifest_from_dict(d)
+
+    # -- hash stability ---------------------------------------------
+
+    def test_hash_unchanged_when_release_fields_none(
+        self, valid_manifest: Manifest
+    ) -> None:
+        # The mainnet receipt was anchored before these fields existed. A
+        # manifest with all four None must canonicalise without any of the
+        # new keys, so its hash is exactly what it was pre-feature.
+        canonical = canonicalize(manifest_to_dict(valid_manifest))
+        for key in (
+            b"spec_version", b"catalogue_release_digest",
+            b"pypi_file_sha256", b"computed_by",
+        ):
+            assert key not in canonical
+
+    def test_hash_changes_when_release_field_set(
+        self, valid_manifest: Manifest
+    ) -> None:
+        # Setting a release field must change the hash, proving the field
+        # is part of the canonical bytes and not cosmetic.
+        m_set = self._with_catalogue(valid_manifest, spec_version="1.5-rc1")
+        assert hash_manifest(m_set) != hash_manifest(valid_manifest)

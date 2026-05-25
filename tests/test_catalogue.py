@@ -33,12 +33,21 @@ import pytest
 from actproof.catalogue import (
     ENV_CATALOGUE_PATH,
     SCHEMA_DISCRIMINATOR,
+    SCHEMA_DISCRIMINATOR_PROFILE_V2,
+    SCHEMA_DISCRIMINATOR_PROFILE_V3,
+    SCHEMA_DISCRIMINATOR_V2,
+    SCHEMA_DISCRIMINATOR_V3,
+    SCHEMA_DISCRIMINATORS,
+    SCHEMA_DISCRIMINATORS_V2,
+    SCHEMA_DISCRIMINATORS_V3,
     Catalogue,
     CatalogueEntry,
     CatalogueLoadError,
     RegulatoryCitation,
     SignaturePolicy,
     ValidationIssue,
+    _digest_catalogue_files,
+    _read_packaged_release_metadata,
     hash_entry_file,
     hash_schema_file,
     load_catalogue,
@@ -848,3 +857,237 @@ class TestValidationIssueCodes:
         m = _build_test_manifest(act_type_id="op:not.real.v1")
         codes = {i.code for i in validate_manifest(m, cat)}
         assert "UNKNOWN_ACT_TYPE" in codes
+
+
+# ─────────────────────────────────────────────────────────────────
+# Group: Catalogue-release provenance (spec_version + release digest)
+# ─────────────────────────────────────────────────────────────────
+
+class TestCatalogueReleaseProvenance:
+    """``spec_version`` and ``catalogue_release_digest`` on a loaded Catalogue.
+
+    These fields pin which actproof-events catalogue release a receipt was
+    built against. They are populated only when the catalogue is resolved
+    from the installed actproof-events package; explicit-path loads (the
+    fixtures used across this file) leave them ``None``.
+    """
+
+    # ----- _digest_catalogue_files: the pure digest function -----
+
+    def test_digest_is_deterministic(self, tmp_path: Path) -> None:
+        root = tmp_path / "acts"
+        (root / "eu").mkdir(parents=True)
+        a = root / "eu" / "a.v1.json"
+        b = root / "eu" / "b.v1.json"
+        a.write_bytes(b'{"act":"a"}')
+        b.write_bytes(b'{"act":"b"}')
+        first = _digest_catalogue_files(root, [a, b])
+        second = _digest_catalogue_files(root, [a, b])
+        assert first == second
+        assert first.startswith("sha256:")
+        assert len(first) == len("sha256:") + 64
+
+    def test_digest_is_order_independent(self, tmp_path: Path) -> None:
+        root = tmp_path / "acts"
+        (root / "eu").mkdir(parents=True)
+        a = root / "eu" / "a.v1.json"
+        b = root / "eu" / "b.v1.json"
+        a.write_bytes(b'{"act":"a"}')
+        b.write_bytes(b'{"act":"b"}')
+        assert _digest_catalogue_files(root, [a, b]) == _digest_catalogue_files(
+            root, [b, a]
+        )
+
+    def test_digest_changes_when_content_changes(self, tmp_path: Path) -> None:
+        root = tmp_path / "acts"
+        root.mkdir(parents=True)
+        entry = root / "a.v1.json"
+        entry.write_bytes(b'{"act":"a"}')
+        before = _digest_catalogue_files(root, [entry])
+        entry.write_bytes(b'{"act":"a","changed":true}')
+        after = _digest_catalogue_files(root, [entry])
+        assert before != after
+
+    def test_digest_changes_when_entry_added(self, tmp_path: Path) -> None:
+        root = tmp_path / "acts"
+        root.mkdir(parents=True)
+        a = root / "a.v1.json"
+        a.write_bytes(b'{"act":"a"}')
+        with_one = _digest_catalogue_files(root, [a])
+        b = root / "b.v1.json"
+        b.write_bytes(b'{"act":"b"}')
+        with_two = _digest_catalogue_files(root, [a, b])
+        assert with_one != with_two
+
+    # ----- _read_packaged_release_metadata: defensive when events absent -----
+
+    def test_release_metadata_none_when_events_not_installed(self) -> None:
+        # actproof-events is an optional dependency. When it is not
+        # installed, the helper must return (None, None) and never raise.
+        try:
+            import actproof_events  # noqa: F401
+        except ImportError:
+            assert _read_packaged_release_metadata() == (None, None)
+            return
+        pytest.skip("actproof-events is installed; absence path not exercised")
+
+    # ----- load_catalogue: explicit-path loads carry no release provenance --
+
+    def test_explicit_path_load_has_no_release_provenance(
+        self, synthetic_catalogue_root: Path
+    ) -> None:
+        acts = synthetic_catalogue_root / "catalogue" / "acts"
+        cat = load_catalogue(acts_path=acts)
+        assert cat.spec_version is None
+        assert cat.catalogue_release_digest is None
+
+    def test_catalogue_dataclass_defaults_to_none(self) -> None:
+        # Constructing a Catalogue without the new fields leaves them None,
+        # so pre-existing callers and already-issued receipts are unaffected.
+        cat = Catalogue(
+            entries={},
+            source_root="/tmp/acts",
+            source_uri=None,
+            git_commit=None,
+            schema_hash="",
+        )
+        assert cat.spec_version is None
+        assert cat.catalogue_release_digest is None
+
+
+# ─────────────────────────────────────────────────────────────────
+# Group: act_profile schema name (actproof-events 1.5 rename)
+# ─────────────────────────────────────────────────────────────────
+
+class TestActProfileSchemaName:
+    """The loader recognises the actproof-events 1.5 ``act_profile`` schema
+    name as well as the pre-1.5 ``act_catalogue_entry`` name.
+
+    actproof-events 1.5 renamed the catalogue entry schema. The entry
+    structure is unchanged; only the discriminator string moved. The loader
+    spans both so it works with catalogues from either side of the rename.
+    """
+
+    def _load_one(self, tmp_path: Path, schema: str, *, act: str) -> Catalogue:
+        acts = tmp_path / "catalogue" / "acts"
+        _write_entry(acts / "eu", act, schema=schema)
+        return load_catalogue(acts_path=acts, validate_schema=False)
+
+    def test_act_profile_v3_entry_is_recognised(self, tmp_path: Path) -> None:
+        cat = self._load_one(
+            tmp_path, SCHEMA_DISCRIMINATOR_PROFILE_V3, act="op:eu.test.alpha.v1"
+        )
+        assert "op:eu.test.alpha.v1" in cat
+        assert len(cat) == 1
+
+    def test_act_profile_v2_entry_is_recognised(self, tmp_path: Path) -> None:
+        cat = self._load_one(
+            tmp_path, SCHEMA_DISCRIMINATOR_PROFILE_V2, act="op:eu.test.beta.v1"
+        )
+        assert "op:eu.test.beta.v1" in cat
+
+    def test_legacy_act_catalogue_entry_still_recognised(
+        self, tmp_path: Path
+    ) -> None:
+        # Backward compatibility: the pre-1.5 name must still load.
+        cat = self._load_one(
+            tmp_path, SCHEMA_DISCRIMINATOR_V3, act="op:eu.test.gamma.v1"
+        )
+        assert "op:eu.test.gamma.v1" in cat
+
+    def test_profile_and_legacy_names_coexist(self, tmp_path: Path) -> None:
+        # A catalogue spanning the rename loads entries under both names.
+        acts = tmp_path / "catalogue" / "acts"
+        _write_entry(
+            acts / "eu", "op:eu.test.new.v1", schema=SCHEMA_DISCRIMINATOR_PROFILE_V3
+        )
+        _write_entry(
+            acts / "eu", "op:eu.test.old.v1", schema=SCHEMA_DISCRIMINATOR_V3
+        )
+        cat = load_catalogue(acts_path=acts, validate_schema=False)
+        assert len(cat) == 2
+        assert "op:eu.test.new.v1" in cat
+        assert "op:eu.test.old.v1" in cat
+
+    def test_act_profile_v3_gets_v3_routing(self, tmp_path: Path) -> None:
+        # An act_profile.v3 entry must route as v3, so its v3 sub-objects are
+        # parsed rather than dropped. Hand-built because _write_entry does
+        # not emit sub-objects.
+        acts_eu = tmp_path / "catalogue" / "acts" / "eu"
+        acts_eu.mkdir(parents=True)
+        entry = {
+            "schema": SCHEMA_DISCRIMINATOR_PROFILE_V3,
+            "act_type_id": "op:eu.test.routing.v1",
+            "claim_type": "test",
+            "display_name": "Routing test",
+            "regulatory_citation": None,
+            "required_claim_fields": ["field_a"],
+            "optional_claim_fields": [],
+            "required_evidence_labels": ["label_a"],
+            "eligible_issuer_roles": ["test_role"],
+            "recommended_witness_roles": ["test_witness"],
+            "signature_policy": {"minimum": "issuer_record", "supports": []},
+            "version": 1,
+            "supersedes": None,
+            "maintainer": "test",
+            "test_vector_reference": "tests/fixtures",
+            "regulated_context_profile": {
+                "allowed_context_types": ["production"],
+                "allowed_submission_stages": [],
+                "default_context_type": None,
+            },
+        }
+        (acts_eu / "routing.v1.json").write_text(json.dumps(entry, indent=2))
+        cat = load_catalogue(
+            acts_path=tmp_path / "catalogue" / "acts", validate_schema=False
+        )
+        loaded = cat.get("op:eu.test.routing.v1")
+        assert loaded is not None
+        assert loaded.regulated_context_profile is not None
+
+    def test_act_profile_entry_validates_against_v3_schema_file(
+        self, tmp_path: Path
+    ) -> None:
+        # With validate_schema=True, an act_profile.v3 entry resolves and
+        # validates against an act_profile.v3.json schema file. Exercises the
+        # new schema-path candidate and the alias-keyed validator map.
+        acts = tmp_path / "catalogue" / "acts"
+        schemas = tmp_path / "spec" / "schemas"
+        _write_entry(
+            acts / "eu", "op:eu.test.validated.v1",
+            schema=SCHEMA_DISCRIMINATOR_PROFILE_V3,
+        )
+        schemas.mkdir(parents=True)
+        (schemas / "act_profile.v3.json").write_bytes(
+            b'{"$schema":"placeholder"}'
+        )
+        cat = load_catalogue(acts_path=acts, validate_schema=True)
+        assert "op:eu.test.validated.v1" in cat
+
+    def test_discriminator_constants(self) -> None:
+        # Legacy public values are unchanged; they are exported package API.
+        assert SCHEMA_DISCRIMINATOR_V2 == "actproof.act_catalogue_entry.v2"
+        assert SCHEMA_DISCRIMINATOR_V3 == "actproof.act_catalogue_entry.v3"
+        # The 1.5 names.
+        assert SCHEMA_DISCRIMINATOR_PROFILE_V2 == "actproof.act_profile.v2"
+        assert SCHEMA_DISCRIMINATOR_PROFILE_V3 == "actproof.act_profile.v3"
+        # Per-version sets carry both names; the full set is their union.
+        assert SCHEMA_DISCRIMINATORS_V3 == {
+            SCHEMA_DISCRIMINATOR_V3, SCHEMA_DISCRIMINATOR_PROFILE_V3
+        }
+        assert SCHEMA_DISCRIMINATORS_V2 == {
+            SCHEMA_DISCRIMINATOR_V2, SCHEMA_DISCRIMINATOR_PROFILE_V2
+        }
+        assert SCHEMA_DISCRIMINATORS == (
+            SCHEMA_DISCRIMINATORS_V2 | SCHEMA_DISCRIMINATORS_V3
+        )
+
+    def test_installed_events_1_5_catalogue_now_loads(self) -> None:
+        # Integration: against an installed actproof-events 1.5, the loader
+        # now loads entries. Before the act_profile fix this returned zero.
+        try:
+            import actproof_events  # noqa: F401
+        except ImportError:
+            pytest.skip("actproof-events is not installed")
+        cat = load_catalogue(validate_schema=False)
+        assert len(cat) > 0

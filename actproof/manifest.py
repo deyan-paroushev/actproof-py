@@ -227,6 +227,15 @@ class CatalogueBinding:
     and check out the ``git_commit``. The cryptographic binding remains
     ``entry_hash``; the package fields make the source easier to obtain.
 
+    Four further optional fields stamp the catalogue *release* the entry
+    was drawn from, as distinct from the single entry. They are populated
+    when the catalogue is loaded from an installed ``actproof-events`` 1.5
+    or later, and remain ``None`` for earlier releases and for non-packaged
+    sources. ``catalogue_release_digest`` is a digest over the whole set of
+    catalogue release files, so a verifier can confirm the entry came from
+    an unmodified release, not just that one entry file hashes correctly.
+    ``computed_by`` is set automatically by ``build_manifest``.
+
     Attributes:
         act_type_id: The catalogue entry's act_type_id, e.g.
             ``"op:eu.nis2.art20.management_body_approval.v1"``.
@@ -244,6 +253,18 @@ class CatalogueBinding:
             ``source_package_name`` to allow a verifier to
             ``pip install actproof-events==<version>`` and obtain byte-exact
             catalogue bytes. ``None`` when ``source_package_name`` is ``None``.
+        spec_version: Optional actproof-events spec version the catalogue
+            release declares (e.g. ``"1.5-rc1"``). ``None`` for releases that
+            predate the field and for non-packaged catalogue sources.
+        catalogue_release_digest: Optional ``"sha256:..."`` digest over the
+            files of the catalogue release, binding the entry to a whole
+            unmodified release rather than to one entry file alone.
+        pypi_file_sha256: Optional ``"sha256:..."`` of the actproof-events
+            distribution file on PyPI, when known. ``None`` otherwise.
+        computed_by: Optional identifier of the tool that built the manifest,
+            e.g. ``"actproof-py 0.3.4"``. Set automatically by
+            ``build_manifest``; ``None`` on manifests built before the field
+            existed.
     """
     act_type_id: str
     entry_version: int
@@ -253,6 +274,10 @@ class CatalogueBinding:
     schema_hash: str
     source_package_name: Optional[str] = None
     source_package_version: Optional[str] = None
+    spec_version: Optional[str] = None
+    catalogue_release_digest: Optional[str] = None
+    pypi_file_sha256: Optional[str] = None
+    computed_by: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -355,6 +380,19 @@ class Manifest:
 # CONSTRUCTION
 # ─────────────────────────────────────────────────────────────────
 
+def _check_optional_str(field_name: str, value: object) -> None:
+    """Raise ``ManifestValidationError`` unless ``value`` is ``None`` or a str.
+
+    Used to guard the optional catalogue-provenance fields, each of which
+    is either absent (``None``) or a string.
+    """
+    if value is not None and not isinstance(value, str):
+        raise ManifestValidationError(
+            f"{field_name} must be a string when present, "
+            f"got {type(value).__name__}."
+        )
+
+
 def build_manifest(
     *,
     act_type_id: str,
@@ -374,6 +412,9 @@ def build_manifest(
     batching_profile: str = BATCHING_PROFILE_SINGLE,
     catalogue_source_package_name: Optional[str] = None,
     catalogue_source_package_version: Optional[str] = None,
+    catalogue_spec_version: Optional[str] = None,
+    catalogue_release_digest: Optional[str] = None,
+    catalogue_pypi_file_sha256: Optional[str] = None,
 ) -> Manifest:
     """Construct a Manifest from raw fields.
 
@@ -408,6 +449,15 @@ def build_manifest(
             neither.
         catalogue_source_package_version: Optional version string of the
             source package at issue time (e.g. ``"1.4.0rc1"``).
+        catalogue_spec_version: Optional actproof-events spec version the
+            catalogue release declares (e.g. ``"1.5-rc1"``).
+        catalogue_release_digest: Optional ``"sha256:..."`` digest over the
+            catalogue release files.
+        catalogue_pypi_file_sha256: Optional ``"sha256:..."`` of the
+            actproof-events distribution file on PyPI, when known.
+
+    The ``computed_by`` field of the resulting ``CatalogueBinding`` is set
+    automatically to ``"actproof-py <version>"``; it is not a parameter.
 
     Returns:
         A fully populated, immutable ``Manifest`` instance.
@@ -439,6 +489,14 @@ def build_manifest(
             f"catalogue_source_package_version must be a string when present, "
             f"got {type(catalogue_source_package_version).__name__}."
         )
+    _check_optional_str("catalogue_spec_version", catalogue_spec_version)
+    _check_optional_str("catalogue_release_digest", catalogue_release_digest)
+    _check_optional_str("catalogue_pypi_file_sha256", catalogue_pypi_file_sha256)
+
+    # computed_by records which tool built this manifest. actproof-py knows
+    # its own version, so the field is filled here rather than passed in.
+    from actproof import __version__ as _actproof_version
+    computed_by = f"actproof-py {_actproof_version}"
 
     return Manifest(
         receipt_profile=receipt_profile,
@@ -452,6 +510,10 @@ def build_manifest(
             schema_hash=catalogue_schema_hash,
             source_package_name=catalogue_source_package_name,
             source_package_version=catalogue_source_package_version,
+            spec_version=catalogue_spec_version,
+            catalogue_release_digest=catalogue_release_digest,
+            pypi_file_sha256=catalogue_pypi_file_sha256,
+            computed_by=computed_by,
         ),
         issuer=Issuer(
             org_name=issuer_org_name,
@@ -475,12 +537,15 @@ def manifest_to_dict(m: Manifest) -> dict[str, Any]:
     The output is what gets passed to ``canonicalize()`` to produce the
     canonical bytes that are hashed and anchored.
 
-    Backwards compatibility: the optional catalogue fields
-    ``source_package_name`` and ``source_package_version`` are only
-    emitted when both are populated. When both are ``None``, they are
-    omitted entirely from the canonical output, so manifests built
-    before these fields existed produce byte-identical canonical bytes
-    (and therefore byte-identical hashes) as they did before.
+    Backwards compatibility: every optional catalogue field is emitted
+    only when populated. ``source_package_name`` and
+    ``source_package_version`` are emitted as a pair when both are set.
+    The four catalogue-release fields (``spec_version``,
+    ``catalogue_release_digest``, ``pypi_file_sha256``, ``computed_by``)
+    are each emitted independently when set. When an optional field is
+    ``None`` it is omitted entirely, so a manifest issued before that
+    field existed produces byte-identical canonical bytes, and therefore
+    a byte-identical hash, as it did before.
 
     Args:
         m: The Manifest to serialise.
@@ -505,6 +570,18 @@ def manifest_to_dict(m: Manifest) -> dict[str, Any]:
     ):
         catalogue_block["source_package_name"] = m.catalogue.source_package_name
         catalogue_block["source_package_version"] = m.catalogue.source_package_version
+
+    # The catalogue-release fields are each emitted only when set. A
+    # manifest with all four None canonicalises exactly as a pre-feature
+    # manifest did, so its hash is unchanged.
+    for _release_key, _release_value in (
+        ("spec_version", m.catalogue.spec_version),
+        ("catalogue_release_digest", m.catalogue.catalogue_release_digest),
+        ("pypi_file_sha256", m.catalogue.pypi_file_sha256),
+        ("computed_by", m.catalogue.computed_by),
+    ):
+        if _release_value is not None:
+            catalogue_block[_release_key] = _release_value
 
     return {
         "receipt_profile": m.receipt_profile,
@@ -545,8 +622,7 @@ def manifest_from_dict(d: Mapping[str, Any]) -> Manifest:
     manifest as a nested dict and needs to reconstruct the typed object
     for inspection.
 
-    Backwards compatibility: the optional catalogue fields
-    ``source_package_name`` and ``source_package_version`` are read via
+    Backwards compatibility: every optional catalogue field is read via
     ``.get(...)`` so receipts predating these fields parse without
     raising. Receipts that carry them populate the corresponding
     ``CatalogueBinding`` attributes.
@@ -558,6 +634,12 @@ def manifest_from_dict(d: Mapping[str, Any]) -> Manifest:
     silently, and re-serialisation via ``manifest_to_dict`` drops both
     (because ``manifest_to_dict`` emits both only when both are set).
     Either commit to package provenance fully or omit it entirely.
+
+    The four catalogue-release fields (``spec_version``,
+    ``catalogue_release_digest``, ``pypi_file_sha256``, ``computed_by``)
+    are independent. Each is read on its own and, when present, must be a
+    string. ``manifest_to_dict`` emits each one independently, so there is
+    no both-or-neither coupling among them.
 
     Args:
         d: A dict matching the canonical manifest shape.
@@ -597,6 +679,18 @@ def manifest_from_dict(d: Mapping[str, Any]) -> Manifest:
                 f"got {type(source_package_version).__name__}."
             )
 
+        # The four catalogue-release fields are independent optionals.
+        spec_version = catalogue_dict.get("spec_version")
+        catalogue_release_digest = catalogue_dict.get("catalogue_release_digest")
+        pypi_file_sha256 = catalogue_dict.get("pypi_file_sha256")
+        computed_by = catalogue_dict.get("computed_by")
+        _check_optional_str("catalogue.spec_version", spec_version)
+        _check_optional_str(
+            "catalogue.catalogue_release_digest", catalogue_release_digest
+        )
+        _check_optional_str("catalogue.pypi_file_sha256", pypi_file_sha256)
+        _check_optional_str("catalogue.computed_by", computed_by)
+
         return Manifest(
             receipt_profile=d["receipt_profile"],
             issued_at=d["issued_at"],
@@ -609,6 +703,10 @@ def manifest_from_dict(d: Mapping[str, Any]) -> Manifest:
                 schema_hash=catalogue_dict["schema_hash"],
                 source_package_name=source_package_name,
                 source_package_version=source_package_version,
+                spec_version=spec_version,
+                catalogue_release_digest=catalogue_release_digest,
+                pypi_file_sha256=pypi_file_sha256,
+                computed_by=computed_by,
             ),
             issuer=Issuer(
                 org_name=issuer_dict["org_name"],

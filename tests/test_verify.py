@@ -600,3 +600,117 @@ class TestOrchestrator:
         )
         cat = result.get_check("catalogue_conformance")
         assert cat.status == CheckStatus.PASS
+
+
+# ─────────────────────────────────────────────────────────────────
+# Group: catalogue_conformance - catalogue-release stamp recheck
+# ─────────────────────────────────────────────────────────────────
+
+class TestCatalogueReleaseStampRecheck:
+    """_check_catalogue_conformance re-derives the manifest's catalogue
+    release stamp (spec_version, catalogue_release_digest) from the
+    catalogue and confirms it matches. A mismatch fails the check.
+    """
+
+    DIGEST_A = "sha256:" + "f" * 64
+    DIGEST_B = "sha256:" + "e" * 64
+
+    def _stamped_receipt(self, receipt: Receipt, **binding_fields) -> Receipt:
+        binding = replace(receipt.manifest.catalogue, **binding_fields)
+        return replace(
+            receipt, manifest=replace(receipt.manifest, catalogue=binding)
+        )
+
+    def test_matching_stamp_confirms_pass(
+        self, receipt: Receipt, catalogue
+    ) -> None:
+        cat = replace(
+            catalogue,
+            spec_version="1.5-rc1",
+            catalogue_release_digest=self.DIGEST_A,
+        )
+        rcpt = self._stamped_receipt(
+            receipt,
+            spec_version="1.5-rc1",
+            catalogue_release_digest=self.DIGEST_A,
+        )
+        result = _check_catalogue_conformance(rcpt, catalogue=cat)
+        assert result.status == CheckStatus.PASS
+        assert result.detail is not None
+        assert "spec_version" in result.detail
+        assert "catalogue_release_digest" in result.detail
+
+    def test_spec_version_mismatch_fails(
+        self, receipt: Receipt, catalogue
+    ) -> None:
+        cat = replace(catalogue, spec_version="9.9-future")
+        rcpt = self._stamped_receipt(receipt, spec_version="1.5-rc1")
+        result = _check_catalogue_conformance(rcpt, catalogue=cat)
+        assert result.status == CheckStatus.FAIL
+        assert "spec_version" in result.detail
+        assert "1.5-rc1" in result.detail
+        assert "9.9-future" in result.detail
+
+    def test_release_digest_mismatch_fails(
+        self, receipt: Receipt, catalogue
+    ) -> None:
+        cat = replace(catalogue, catalogue_release_digest=self.DIGEST_B)
+        rcpt = self._stamped_receipt(
+            receipt, catalogue_release_digest=self.DIGEST_A
+        )
+        result = _check_catalogue_conformance(rcpt, catalogue=cat)
+        assert result.status == CheckStatus.FAIL
+        # The failure is the stamp recheck, naming the release, not a
+        # claim-field issue from validate_manifest.
+        assert "catalogue_release_digest" in result.detail
+        assert "release" in result.detail.lower()
+
+    def test_unstamped_manifest_does_not_fail(
+        self, receipt: Receipt, catalogue
+    ) -> None:
+        # An older receipt carries no stamp; the catalogue does. The
+        # missing manifest side means nothing to compare, so the check
+        # still passes via claim validation. This is the path the
+        # anchored mainnet receipt takes.
+        assert receipt.manifest.catalogue.spec_version is None
+        cat = replace(
+            catalogue,
+            spec_version="1.5-rc1",
+            catalogue_release_digest=self.DIGEST_A,
+        )
+        result = _check_catalogue_conformance(receipt, catalogue=cat)
+        assert result.status == CheckStatus.PASS
+        assert result.detail is None
+
+    def test_unstamped_catalogue_does_not_fail(
+        self, receipt: Receipt, catalogue
+    ) -> None:
+        # The manifest is stamped but the catalogue was loaded from a
+        # source that does not expose the release values. Nothing to
+        # compare, so no false failure.
+        assert catalogue.spec_version is None
+        rcpt = self._stamped_receipt(
+            receipt,
+            spec_version="1.5-rc1",
+            catalogue_release_digest=self.DIGEST_A,
+        )
+        result = _check_catalogue_conformance(rcpt, catalogue=catalogue)
+        assert result.status == CheckStatus.PASS
+
+    def test_recheck_compares_each_field_independently(
+        self, receipt: Receipt, catalogue
+    ) -> None:
+        # spec_version is present on both sides and matches;
+        # catalogue_release_digest is absent on the manifest. The recheck
+        # confirms spec_version alone and does not fail.
+        cat = replace(
+            catalogue,
+            spec_version="1.5-rc1",
+            catalogue_release_digest=self.DIGEST_A,
+        )
+        rcpt = self._stamped_receipt(receipt, spec_version="1.5-rc1")
+        result = _check_catalogue_conformance(rcpt, catalogue=cat)
+        assert result.status == CheckStatus.PASS
+        assert result.detail is not None
+        assert "spec_version" in result.detail
+        assert "catalogue_release_digest" not in result.detail

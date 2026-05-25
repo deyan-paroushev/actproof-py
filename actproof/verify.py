@@ -217,8 +217,9 @@ class CheckResult:
             ``catalogue_conformance``, ``anchor_on_chain``,
             ``timestamp_signature``.
         status: ``CheckStatus.PASS``, ``FAIL``, ``SKIP``, or ``ERROR``.
-        detail: Human-readable diagnostic. ``None`` for trivial passes;
-            present on FAIL, SKIP, and ERROR to explain what happened.
+        detail: Human-readable diagnostic. Present on FAIL, SKIP, and
+            ERROR to explain what happened, and on a PASS that has
+            something noteworthy to report. ``None`` for a trivial pass.
         elapsed_seconds: Wall-clock time spent on the check.
     """
     name: str
@@ -369,7 +370,21 @@ def _check_catalogue_conformance(
     receipt: Receipt,
     catalogue: Optional[Catalogue],
 ) -> CheckResult:
-    """Run validate_manifest against the catalogue, if one is provided."""
+    """Verify the manifest conforms to the catalogue, if one is provided.
+
+    Two things are checked. First, the catalogue-release stamp: the
+    manifest records the spec version and release digest of the catalogue
+    release it was built against, and both are re-derived from the
+    catalogue provided here and compared. A mismatch means the receipt was
+    built against a different catalogue release, so the check fails before
+    claim validation, which would otherwise run against the wrong release.
+    A stamp field absent on either side, a manifest issued before the
+    stamp existed or a catalogue loaded from a source that does not expose
+    these values, is simply not compared. Second, validate_manifest checks
+    the manifest's claim fields against the catalogue entry.
+
+    SKIP when no catalogue is provided.
+    """
     started = time.monotonic()
     if catalogue is None:
         return CheckResult(
@@ -380,6 +395,45 @@ def _check_catalogue_conformance(
                 "actproof.verify_receipt() to enable this check. The "
                 "catalogue must be loaded at the git commit named in "
                 "receipt.manifest.catalogue.git_commit."
+            ),
+            elapsed_seconds=time.monotonic() - started,
+        )
+
+    # Recheck the catalogue-release stamp. The manifest records the spec
+    # version and release digest of the catalogue release it was built
+    # against. Re-derive both from the catalogue provided for verification
+    # and compare. A field is compared only when present on both sides: a
+    # manifest issued before the stamp existed, or a catalogue loaded from
+    # a source that does not expose these values, skips that field.
+    binding = receipt.manifest.catalogue
+    stamp_mismatches: list[str] = []
+    stamp_confirmed: list[str] = []
+    for label, stamped, derived in (
+        ("spec_version", binding.spec_version, catalogue.spec_version),
+        (
+            "catalogue_release_digest",
+            binding.catalogue_release_digest,
+            catalogue.catalogue_release_digest,
+        ),
+    ):
+        if stamped is None or derived is None:
+            continue
+        if stamped == derived:
+            stamp_confirmed.append(label)
+        else:
+            stamp_mismatches.append(
+                f"{label}: manifest stamped {stamped!r}, "
+                f"catalogue provides {derived!r}"
+            )
+
+    if stamp_mismatches:
+        return CheckResult(
+            name="catalogue_conformance",
+            status=CheckStatus.FAIL,
+            detail=(
+                "Catalogue release stamp does not match the catalogue "
+                "provided for verification. The receipt was built against "
+                "a different catalogue release. " + "; ".join(stamp_mismatches)
             ),
             elapsed_seconds=time.monotonic() - started,
         )
@@ -406,9 +460,17 @@ def _check_catalogue_conformance(
             ),
             elapsed_seconds=time.monotonic() - started,
         )
+    detail = None
+    if stamp_confirmed:
+        detail = (
+            "Catalogue release stamp confirmed against the catalogue: "
+            + ", ".join(stamp_confirmed)
+            + "."
+        )
     return CheckResult(
         name="catalogue_conformance",
         status=CheckStatus.PASS,
+        detail=detail,
         elapsed_seconds=time.monotonic() - started,
     )
 

@@ -48,6 +48,8 @@ import pytest
 
 from actproof.catalogue import (
     SCHEMA_DISCRIMINATOR,
+    SCHEMA_DISCRIMINATOR_PROFILE_V2,
+    SCHEMA_DISCRIMINATOR_PROFILE_V3,
     SCHEMA_DISCRIMINATOR_V2,
     SCHEMA_DISCRIMINATOR_V3,
     SCHEMA_DISCRIMINATORS,
@@ -339,7 +341,17 @@ class TestDiscriminatorConstants:
 
     def test_discriminators_is_frozenset(self) -> None:
         assert isinstance(SCHEMA_DISCRIMINATORS, frozenset)
-        assert len(SCHEMA_DISCRIMINATORS) == 2
+        # actproof-events 1.5 renamed the entry schema from
+        # act_catalogue_entry to act_profile. The loader recognises both
+        # names: two schema versions across two name eras, four
+        # discriminators in all.
+        assert len(SCHEMA_DISCRIMINATORS) == 4
+        assert SCHEMA_DISCRIMINATORS == {
+            SCHEMA_DISCRIMINATOR_V2,
+            SCHEMA_DISCRIMINATOR_V3,
+            SCHEMA_DISCRIMINATOR_PROFILE_V2,
+            SCHEMA_DISCRIMINATOR_PROFILE_V3,
+        }
 
     def test_backward_compat_alias_equals_v2(self) -> None:
         """``SCHEMA_DISCRIMINATOR`` is retained as an alias for v2 so that

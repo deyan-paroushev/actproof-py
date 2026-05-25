@@ -168,7 +168,11 @@ __all__ = [
     "SCHEMA_DISCRIMINATOR",
     "SCHEMA_DISCRIMINATOR_V2",
     "SCHEMA_DISCRIMINATOR_V3",
+    "SCHEMA_DISCRIMINATOR_PROFILE_V2",
+    "SCHEMA_DISCRIMINATOR_PROFILE_V3",
     "SCHEMA_DISCRIMINATORS",
+    "SCHEMA_DISCRIMINATORS_V2",
+    "SCHEMA_DISCRIMINATORS_V3",
     "ENV_CATALOGUE_PATH",
 ]
 
@@ -184,14 +188,43 @@ no v3 sub-objects)."""
 SCHEMA_DISCRIMINATOR_V3: str = "actproof.act_catalogue_entry.v3"
 """Schema discriminator for v3 catalogue entries (fifteen v2 fields plus four
 optional sub-objects: ``regulated_context_profile``, ``prior_receipts_profile``,
-``reliance_context``, ``disclosure_profile``)."""
+``reliance_context``, ``disclosure_profile``). This is the pre-1.5 name; see
+``SCHEMA_DISCRIMINATOR_PROFILE_V3`` for the actproof-events 1.5+ name."""
 
-SCHEMA_DISCRIMINATORS: frozenset[str] = frozenset({
+# actproof-events 1.5 renamed the catalogue entry schema from
+# ``act_catalogue_entry`` to ``act_profile``. The entry structure did not
+# change: a v2 or v3 entry has identical fields under either name, and the
+# version number (v2, v3) is unchanged. The loader recognises both names so
+# it spans actproof-events releases on either side of the rename.
+
+SCHEMA_DISCRIMINATOR_PROFILE_V2: str = "actproof.act_profile.v2"
+"""Schema discriminator for v2 catalogue entries from actproof-events 1.5 and
+later, where the entry schema was renamed to ``act_profile``. Same entry
+structure as ``SCHEMA_DISCRIMINATOR_V2``."""
+
+SCHEMA_DISCRIMINATOR_PROFILE_V3: str = "actproof.act_profile.v3"
+"""Schema discriminator for v3 catalogue entries from actproof-events 1.5 and
+later. Same entry structure as ``SCHEMA_DISCRIMINATOR_V3``."""
+
+SCHEMA_DISCRIMINATORS_V2: frozenset[str] = frozenset({
     SCHEMA_DISCRIMINATOR_V2,
-    SCHEMA_DISCRIMINATOR_V3,
+    SCHEMA_DISCRIMINATOR_PROFILE_V2,
 })
-"""Set of all schema discriminator strings recognised by this loader.
-Membership check: ``entry_data["schema"] in SCHEMA_DISCRIMINATORS``."""
+"""Every discriminator string the loader treats as a v2 catalogue entry: the
+pre-1.5 ``act_catalogue_entry`` name and the 1.5+ ``act_profile`` name."""
+
+SCHEMA_DISCRIMINATORS_V3: frozenset[str] = frozenset({
+    SCHEMA_DISCRIMINATOR_V3,
+    SCHEMA_DISCRIMINATOR_PROFILE_V3,
+})
+"""Every discriminator string the loader treats as a v3 catalogue entry."""
+
+SCHEMA_DISCRIMINATORS: frozenset[str] = (
+    SCHEMA_DISCRIMINATORS_V2 | SCHEMA_DISCRIMINATORS_V3
+)
+"""Set of all schema discriminator strings recognised by this loader, across
+both schema versions and both naming eras. Membership check:
+``entry_data["schema"] in SCHEMA_DISCRIMINATORS``."""
 
 SCHEMA_DISCRIMINATOR: str = SCHEMA_DISCRIMINATOR_V2
 """Backward-compatible alias for ``SCHEMA_DISCRIMINATOR_V2``. Retained so that
@@ -210,19 +243,27 @@ _FALLBACK_ACTS_PATHS: tuple[str, ...] = (
 """Filesystem locations to try if no path is given and the env var is unset."""
 
 _SCHEMA_RELATIVE_PATHS_V3: tuple[tuple[str, ...], ...] = (
+    ("..", "..", "spec", "schemas", "act_profile.v3.json"),
+    ("..", "..", "schemas", "act_profile.v3.json"),
     ("..", "..", "spec", "schemas", "act_catalogue_entry.v3.json"),
     ("..", "..", "schemas", "act_catalogue_entry.v3.json"),
 )
-"""Default v3 schema paths relative to the acts directory. First tuple is the
+"""Default v3 schema-file paths relative to the acts directory, tried in
+order. The actproof-events 1.5+ name ``act_profile.v3.json`` comes first, then
+the pre-1.5 name ``act_catalogue_entry.v3.json``. Within each name the
 source-tree layout (``catalogue/acts/`` sibling of ``spec/schemas/`` under the
-repo root). Second tuple is the installed-package layout (``data/catalogue/acts/``
+repo root) is tried before the installed-package layout (``data/catalogue/acts/``
 sibling of ``data/schemas/`` inside the bundled wheel)."""
 
 _SCHEMA_RELATIVE_PATHS_V2: tuple[tuple[str, ...], ...] = (
+    ("..", "..", "spec", "schemas", "act_profile.v2.json"),
+    ("..", "..", "schemas", "act_profile.v2.json"),
     ("..", "..", "spec", "schemas", "act_catalogue_entry.v2.json"),
     ("..", "..", "schemas", "act_catalogue_entry.v2.json"),
 )
-"""Default v2 schema paths relative to the acts directory, same two layouts."""
+"""Default v2 schema-file paths relative to the acts directory, tried in
+order: the actproof-events 1.5+ name ``act_profile.v2.json`` first, then the
+pre-1.5 name ``act_catalogue_entry.v2.json``, each in the two layouts above."""
 
 # Backward-compatible single-tuple aliases for any external consumer that
 # imported the private names. Public API is via _resolve_schema_path().
@@ -534,6 +575,21 @@ class Catalogue:
         source_package_version: Optional version string of the source
             package at load time (e.g. ``"1.4.0rc1"``). Set whenever
             ``source_package_name`` is set; ``None`` otherwise.
+        spec_version: The actproof-events specification revision the
+            installed package embodies (e.g. ``"1.5-rc1"``), read from
+            ``actproof_events.__spec_version__``. Set only when the
+            catalogue is resolved from the installed ``actproof-events``
+            package; ``None`` for explicit-path, environment-variable, or
+            filesystem-fallback loads, and ``None`` for packages too old
+            to expose the constant.
+        catalogue_release_digest: ``"sha256:..."`` content digest over the
+            authoritative catalogue entry files of the installed
+            ``actproof-events`` release. Where ``source_package_version``
+            records only the version label, this pins the catalogue
+            content cryptographically: a verifier installs
+            ``actproof-events`` at the recorded version and recomputes the
+            digest to confirm the catalogue bytes are unaltered. Set only
+            for the packaged case; ``None`` otherwise.
     """
     entries: Mapping[str, CatalogueEntry]
     source_root: str
@@ -542,6 +598,8 @@ class Catalogue:
     schema_hash: str
     source_package_name: Optional[str] = None
     source_package_version: Optional[str] = None
+    spec_version: Optional[str] = None
+    catalogue_release_digest: Optional[str] = None
 
     def get(self, act_type_id: str) -> Optional[CatalogueEntry]:
         """Look up an entry by ``act_type_id``. Returns ``None`` if absent."""
@@ -643,6 +701,94 @@ def _resolve_from_packaged_events() -> Optional[Path]:
     return path
 
 
+def _digest_catalogue_files(
+    catalogue_root: Path, entry_paths: list[Path]
+) -> str:
+    """Compute a reproducible ``"sha256:..."`` digest over a set of catalogue files.
+
+    The digest is a content fingerprint of a catalogue release: it changes
+    if any entry's bytes change, if an entry is added, or if one is removed.
+    It is deterministic and independent of the order ``entry_paths`` is
+    supplied in.
+
+    The algorithm is kept simple so a verifier in any language can
+    reproduce it:
+
+    1. For each file, take its path relative to ``catalogue_root`` as a
+       POSIX string, and the SHA-256 of its raw bytes as lowercase hex.
+    2. Sort those ``(relative_path, content_hash)`` rows lexically.
+    3. Join them into a manifest, one ``"<relative_path> <content_hash>\\n"``
+       line per row.
+    4. The digest is ``"sha256:"`` followed by the SHA-256 of the manifest,
+       UTF-8 encoded.
+
+    Raw file bytes are hashed, not canonical bytes, matching
+    :func:`hash_entry_file` and the git-pinned model: anyone with the
+    catalogue at the pinned release can recompute the same value.
+
+    Args:
+        catalogue_root: Directory the entry paths are taken relative to.
+        entry_paths: Catalogue entry files to include in the digest.
+
+    Returns:
+        ``"sha256:"`` followed by 64 lowercase hex characters.
+
+    Raises:
+        OSError: If a file cannot be read.
+        ValueError: If a path is not located under ``catalogue_root``.
+    """
+    rows: list[tuple[str, str]] = []
+    for path in entry_paths:
+        rel = Path(path).relative_to(catalogue_root).as_posix()
+        content_hash = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        rows.append((rel, content_hash))
+    rows.sort()
+    manifest = "".join(f"{rel} {content_hash}\n" for rel, content_hash in rows)
+    return "sha256:" + hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+
+
+def _read_packaged_release_metadata() -> tuple[Optional[str], Optional[str]]:
+    """Read catalogue-release provenance from the installed ``actproof-events``.
+
+    Returns a ``(spec_version, catalogue_release_digest)`` pair:
+
+    - ``spec_version`` is ``actproof_events.__spec_version__``, the
+      specification revision the installed package embodies (e.g.
+      ``"1.5-rc1"``).
+    - ``catalogue_release_digest`` is a content digest over the release's
+      authoritative catalogue entries, computed by
+      :func:`_digest_catalogue_files` over ``list_catalogue_entries()``.
+
+    Either element is ``None`` when the installed ``actproof-events`` is too
+    old to expose the relevant API, when the package is not installed, or
+    when the computation fails. This is best-effort provenance and never
+    raises: a catalogue still loads without it.
+    """
+    try:
+        import actproof_events  # type: ignore[import-not-found]
+    except ImportError:
+        return (None, None)
+
+    spec_version = getattr(actproof_events, "__spec_version__", None)
+    if not isinstance(spec_version, str):
+        spec_version = None
+
+    catalogue_release_digest: Optional[str] = None
+    list_entries = getattr(actproof_events, "list_catalogue_entries", None)
+    get_path = getattr(actproof_events, "get_catalogue_path", None)
+    if callable(list_entries) and callable(get_path):
+        try:
+            catalogue_root = Path(get_path())
+            entry_paths = [Path(p) for p in list_entries()]
+            catalogue_release_digest = _digest_catalogue_files(
+                catalogue_root, entry_paths
+            )
+        except Exception:  # pragma: no cover - defensive against package bugs
+            catalogue_release_digest = None
+
+    return (spec_version, catalogue_release_digest)
+
+
 def _resolve_acts_path(explicit: Optional[Path]) -> Path:
     """Resolve the catalogue acts path from arg, env var, installed package, or fallbacks."""
     if explicit is not None:
@@ -683,8 +829,9 @@ def _resolve_acts_path(explicit: Optional[Path]) -> Path:
 def _resolve_schema_path(acts_path: Path) -> Optional[Path]:
     """Find the schema file relative to the acts directory.
 
-    Tries v3 first (``act_catalogue_entry.v3.json``), falls back to v2
-    (``act_catalogue_entry.v2.json``). For each version tries two layouts
+    Tries v3 first, then v2. For each version it tries both the
+    actproof-events 1.5+ schema-file name (``act_profile.vN.json``) and the
+    pre-1.5 name (``act_catalogue_entry.vN.json``), and two layouts
     in order: the source-tree layout (``../../spec/schemas/`` from acts,
     where ``catalogue/`` and ``spec/`` are siblings at the repo root) and
     the installed-package layout (``../../schemas/`` from acts, where the
@@ -708,22 +855,26 @@ def _resolve_schema_paths(acts_path: Path) -> dict[str, Path]:
 
     Returns a mapping from schema discriminator to the schema file found
     on disk, for whichever of the v2 and v3 schema files are present next
-    to the catalogue. Used to build per-version validators for load-time
-    schema validation.
+    to the catalogue. When a file is found it is registered under every
+    discriminator name for that version, the pre-1.5 ``act_catalogue_entry``
+    name and the 1.5+ ``act_profile`` name alike, so an entry validates
+    whichever name it declares. Used to build per-version validators for
+    load-time schema validation.
 
     This is distinct from :func:`_resolve_schema_path`, which returns the
     single file hashed into ``Catalogue.schema_hash``. Both consult the
     same source-tree and installed-package layouts.
     """
     resolved: dict[str, Path] = {}
-    for discriminator, relative_sets in (
-        (SCHEMA_DISCRIMINATOR_V3, _SCHEMA_RELATIVE_PATHS_V3),
-        (SCHEMA_DISCRIMINATOR_V2, _SCHEMA_RELATIVE_PATHS_V2),
+    for discriminators, relative_sets in (
+        (SCHEMA_DISCRIMINATORS_V3, _SCHEMA_RELATIVE_PATHS_V3),
+        (SCHEMA_DISCRIMINATORS_V2, _SCHEMA_RELATIVE_PATHS_V2),
     ):
         for relative_parts in relative_sets:
             candidate = acts_path.joinpath(*relative_parts).resolve()
             if candidate.is_file():
-                resolved[discriminator] = candidate
+                for discriminator in discriminators:
+                    resolved[discriminator] = candidate
                 break
     return resolved
 
@@ -829,7 +980,7 @@ def _parse_entry(data: dict, source_path: str, entry_hash: str) -> CatalogueEntr
         disclosure_profile: Optional[DisclosureProfile] = None
         claim_field_types: Optional[Mapping[str, str]] = None
 
-        if schema_value == SCHEMA_DISCRIMINATOR_V3:
+        if schema_value in SCHEMA_DISCRIMINATORS_V3:
             rcp_data = data.get("regulated_context_profile")
             if rcp_data is not None:
                 regulated_context_profile = RegulatedContextProfile(
@@ -1036,7 +1187,10 @@ def load_catalogue(
         ``actproof-events`` package (priority 3 in the resolution order),
         the returned ``Catalogue`` also carries ``source_package_name`` and
         ``source_package_version`` set to that package's distribution name
-        and version. Callers can pass these to ``build_manifest`` so
+        and version, and, where the installed package exposes them,
+        ``spec_version`` (the specification revision) and
+        ``catalogue_release_digest`` (a content digest over the release's
+        catalogue entries). Callers can pass these to ``build_manifest`` so
         receipts record pip-installable provenance alongside the existing
         git-based catalogue pinning.
 
@@ -1093,6 +1247,8 @@ def load_catalogue(
     # submodule, vendoring, or volume mount.
     source_package_name: Optional[str] = None
     source_package_version: Optional[str] = None
+    spec_version: Optional[str] = None
+    catalogue_release_digest: Optional[str] = None
     if acts_path is None:
         packaged = _resolve_from_packaged_events()
         if packaged is not None and packaged == resolved_acts:
@@ -1118,6 +1274,13 @@ def load_catalogue(
                 # silently: the catalogue still loads, callers just
                 # get no package provenance.
                 pass
+            # Catalogue-release provenance: the specification revision
+            # and a content digest over the release's catalogue entries.
+            # Best-effort and separate from the distribution metadata
+            # above; either side may be present without the other.
+            spec_version, catalogue_release_digest = (
+                _read_packaged_release_metadata()
+            )
 
     logger.info(
         "Loaded %d catalogue entries from %s: %s",
@@ -1132,6 +1295,8 @@ def load_catalogue(
         schema_hash=schema_hash,
         source_package_name=source_package_name,
         source_package_version=source_package_version,
+        spec_version=spec_version,
+        catalogue_release_digest=catalogue_release_digest,
     )
 
 
