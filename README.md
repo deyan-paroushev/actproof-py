@@ -5,6 +5,12 @@ public attestations. Canonical JSON (RFC 8785), RFC 3161 trusted timestamps,
 Algorand ARC-2 anchoring, independent verification by any party with a Python
 install.
 
+**Project site: [actproof.org](https://actproof.org).** The site explains
+the full ActProof stack and the reasoning behind it. ActProof Events
+defines the act, `actproof` proves the record, and applications consume
+both. Start there for the architecture. This README is the package
+reference.
+
 `actproof` produces cryptographic receipts that any third party can verify
 without trusting the issuing platform. A receipt binds: the record or act
 being documented (optionally classified against the `actproof-events`
