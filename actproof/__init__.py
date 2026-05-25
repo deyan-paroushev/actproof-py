@@ -80,6 +80,7 @@ from actproof.receipt import (
     ARC2_NOTE_FORMAT,
     AnchorRecord,
     IssuerEvidence,
+    OnChainNote,
     PlaintextRecipient,
     Receipt,
     ReceiptError,
@@ -88,6 +89,7 @@ from actproof.receipt import (
     build_receipt,
     issuer_evidence_from_dict,
     issuer_evidence_to_dict,
+    on_chain_note_from_bytes,
     read_issuer_evidence,
     read_receipt,
     receipt_from_dict,
@@ -179,6 +181,8 @@ __all__ = [
     "read_issuer_evidence", "write_issuer_evidence",
     "ALGORAND_MAINNET", "ALGORAND_TESTNET", "ALGORAND_BETANET",
     "ARC2_NOTE_FORMAT", "ARC2_DAPP_NAME", "ARC2_FORMAT_VERSION_JSON",
+    # receipt.py (v0.3.4): on-chain note in three encodings
+    "OnChainNote", "on_chain_note_from_bytes",
     # timestamp.py (v0.0.6)
     "TimestampAuthority", "TSAAttempt", "AcquisitionResult",
     "TimestampError", "acquire_timestamp_token",
